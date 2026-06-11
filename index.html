@@ -1586,6 +1586,8 @@ function saveCalTask(id){
   save();closeModal('modal-add');renderContent();
 }
 function deleteCalTask(id){
+  // removed - handled by editCalTask
+}
 function delCalTask(id){const b=board();const t=(b.items||[]).find(x=>x.id===id);if(t)addLog('Tarefa removida: '+t.text);b.items=(b.items||[]).filter(x=>x.id!==id);save();renderContent();}
 
 // ══════════════════════════════════════════════
@@ -2170,8 +2172,6 @@ if(document.readyState==='loading'){
   document.addEventListener('DOMContentLoaded', initDashboard);
 } else {
   initDashboard();
-}
-
 }
 
 </script>
