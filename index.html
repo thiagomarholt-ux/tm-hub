@@ -2139,15 +2139,38 @@ function hardReset(){
   }
 })();
 
-// Always start with sidebar expanded
-sidebarCollapsed=false;
-document.getElementById('sidebar').classList.remove('collapsed');
-renderSidebar();
-// Show reset helper if no boards rendered
-if(D.boards.length===0){document.getElementById('reset-helper').style.display='block';}else{document.getElementById('reset-helper').style.display='none';}
-switchBoard('meudia');
-// Sync from Supabase in background and refresh
-setTimeout(sbLoad, 100);
+// ── BULLETPROOF INIT ─────────────────────────────────────
+function initDashboard(){
+  sidebarCollapsed=false;
+  var sb=document.getElementById('sidebar');
+  if(sb)sb.classList.remove('collapsed');
+
+  // Step 1: render immediately from localStorage
+  renderSidebar();
+
+  if(D.boards.length===0){
+    var rh=document.getElementById('reset-helper');
+    if(rh)rh.style.display='block';
+  } else {
+    var rh2=document.getElementById('reset-helper');
+    if(rh2)rh2.style.display='none';
+    switchBoard('meudia');
+  }
+
+  // Step 2: sync Supabase in background after 200ms
+  setTimeout(function(){
+    sbLoad().catch(function(e){console.warn('sbLoad error:',e);});
+  }, 200);
+
+  setInterval(updateTopbar,60000);
+}
+
+// Run after DOM is fully ready
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded', initDashboard);
+} else {
+  initDashboard();
+}
 
 }
 
