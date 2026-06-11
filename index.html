@@ -777,7 +777,32 @@ const BOARDS_DEFAULT=[
   },
   {
     id:'meudia',name:'Meu Dia',icon:'focus',type:'meudia',
-    items:[]
+    groups:[
+      {id:'md-diario',name:'Tarefas Diárias',collapsed:false},
+      {id:'md-pessoal',name:'Tarefas Pessoais',collapsed:false},
+      {id:'md-direito',name:'Tarefas Direito',collapsed:false},
+      {id:'md-auto',name:'Automações',collapsed:false},
+    ],
+    columns:[
+      {id:'md-status',name:'Status',type:'status',width:'w120'},
+      {id:'md-priority',name:'Prioridade',type:'text',width:'w100'},
+    ],
+    items:[
+      {id:'mdt1',group:'md-diario',name:'Google Ads CANAA',status:'novo',priority:'Alta',notes:'',comments:[],links:[]},
+      {id:'mdt2',group:'md-diario',name:'Anúncio BETO',status:'novo',priority:'Alta',notes:'',comments:[],links:[]},
+      {id:'mdt3',group:'md-diario',name:'BOLZAN',status:'ativo',priority:'Média',notes:'',comments:[],links:[]},
+      {id:'mdt4',group:'md-diario',name:'GLAUCI',status:'novo',priority:'Alta',notes:'',comments:[],links:[]},
+      {id:'mdt5',group:'md-diario',name:'Apresentação Beto Marcas',status:'novo',priority:'Alta',notes:'',comments:[],links:[]},
+      {id:'mdt6',group:'md-pessoal',name:'ASAAS',status:'novo',priority:'Média',notes:'',comments:[],links:[]},
+      {id:'mdt7',group:'md-pessoal',name:'Pitch de vendas',status:'novo',priority:'Média',notes:'',comments:[],links:[]},
+      {id:'mdt8',group:'md-pessoal',name:'Fazer apresentação para reuniões',status:'novo',priority:'Baixa',notes:'',comments:[],links:[]},
+      {id:'mdt9',group:'md-pessoal',name:'Atualizar LinkedIn',status:'novo',priority:'Baixa',notes:'',comments:[],links:[]},
+      {id:'mdt10',group:'md-direito',name:'Processo Vítor',status:'aguardando',priority:'Alta',notes:'',comments:[],links:[]},
+      {id:'mdt11',group:'md-direito',name:'Processo LT',status:'aguardando',priority:'Alta',notes:'',comments:[],links:[]},
+      {id:'mdt12',group:'md-direito',name:'Aposentadoria PAI',status:'aguardando',priority:'Média',notes:'',comments:[],links:[]},
+      {id:'mdt13',group:'md-auto',name:'CRM WhatsApp automação',status:'planejamento',priority:'Média',notes:'',comments:[],links:[]},
+      {id:'mdt14',group:'md-auto',name:'PARA MIM',status:'planejamento',priority:'Baixa',notes:'',comments:[],links:[]},
+    ]
   },
   {
     id:'despesas',name:'Despesas',icon:'receipt',type:'despesas',
@@ -950,7 +975,10 @@ function renderContent(){
   chartInstances={};
 
   if(b.type==='dashboard'){el.innerHTML='';renderDashboard(el);return}
-  if(b.type==='meudia'){el.innerHTML='';renderMeuDia(el);return}
+  if(b.type==='meudia'){
+    if(curView==='tabela'||!curView){el.innerHTML='';renderMeuDia(el);return}
+    // kanban+graficos use standard renderers below
+  }
   if(b.type==='despesas'){el.innerHTML='';renderDespesas(el);return}
   if(b.type==='calendar'){el.innerHTML='';renderCalendarBoard(el);return}
 
@@ -1250,32 +1278,20 @@ function renderChartView(el){
 // ══════════════════════════════════════════════
 
 // ══════════════════════════════════════════════
-//  MEU DIA — FOCO + POMODORO + MITS
+//  MEU DIA
 // ══════════════════════════════════════════════
-var pomoState={running:false,isBreak:false,seconds:25*60,total:25*60,interval:null,count:0,taskName:''};
 var MD_KEY='tm_meudia_v1';
 
 function loadMD(){
   try{var r=localStorage.getItem(MD_KEY);if(r)return JSON.parse(r);}catch(e){}
-  var today=todayISO();
-  return{date:today,mits:[
-    {id:uid(),text:'',tag:'traf',done:false},
-    {id:uid(),text:'',tag:'traf',done:false},
-    {id:uid(),text:'',tag:'traf',done:false}
-  ],seqDone:[],review:{fiz:'',ficou:'',amanha:''},pomoCount:0};
+  return{date:todayISO(),mits:[{id:uid(),text:'',done:false},{id:uid(),text:'',done:false},{id:uid(),text:'',done:false}],review:{fiz:'',ficou:'',amanha:''}};
 }
 function saveMD(md){localStorage.setItem(MD_KEY,JSON.stringify(md));sbSaveMD();}
 function getMD(){
-  var md=loadMD();
-  var today=todayISO();
+  var md=loadMD(),today=todayISO();
   if(md.date!==today){
-    // New day — reset but keep amanhã from yesterday
     var prev=md.review?md.review.amanha:'';
-    md={date:today,mits:[
-      {id:uid(),text:prev||'',tag:'traf',done:false},
-      {id:uid(),text:'',tag:'traf',done:false},
-      {id:uid(),text:'',tag:'traf',done:false}
-    ],seqDone:[],review:{fiz:'',ficou:'',amanha:''},pomoCount:0};
+    md={date:today,mits:[{id:uid(),text:prev||'',done:false},{id:uid(),text:'',done:false},{id:uid(),text:'',done:false}],review:{fiz:'',ficou:'',amanha:''}};
     saveMD(md);
   }
   return md;
@@ -1283,49 +1299,24 @@ function getMD(){
 
 function renderMeuDia(el){
   var md=getMD();
-  var today=todayISO();
-  var calBoard=D.boards.find(function(b){return b.id==='agenda';});
-  var calTasks=calBoard?(calBoard.items||[]).filter(function(t){return t.date===today;}).sort(function(a,b){return a.tag.localeCompare(b.tag);}):[]; 
-
-  // Progress
-  var mitsDone=md.mits.filter(function(m){return m.done&&m.text;}).length;
-  var mitsTotal=md.mits.filter(function(m){return m.text;}).length||3;
-  var calDone=calTasks.filter(function(t){return t.done;}).length;
-  var calTotal=calTasks.length;
-  var pomoCount=md.pomoCount||0;
   var d=new Date();
-  var greeting=d.getHours()<12?'Bom dia':'d.getHours()<18?\'Boa tarde\':\'Boa noite\'';
-  greeting=d.getHours()<12?'Bom dia':d.getHours()<18?'Boa tarde':'Boa noite';
-
-  var tagColors={traf:'var(--red)',dir:'var(--s-blue)',pes:'var(--s-yellow)'};
-  var tagBg={traf:'var(--red-s)',dir:'var(--s-blue-bg)',pes:'var(--s-yellow-bg)'};
-  var tagLabel={traf:'Tráfego',dir:'Direito',pes:'Pessoal'};
-
+  var greeting=d.getHours()<12?'Bom dia':d.getHours()<18?'Boa tarde':'Boa noite';
   var out='';
 
-  // ── GREETING + DATE ──
+  // Greeting
   out+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">'
-    +'<div>'
-    +'<div style="font-size:20px;font-weight:600;color:var(--text)">'+greeting+', Thiago 👋</div>'
-    +'<div style="font-size:12px;color:var(--text3);margin-top:3px">'+DAYS_S[d.getDay()]+', '+d.getDate()+' de '+MONTHS_PT[d.getMonth()]+' de '+d.getFullYear()+'</div>'
-    +'</div>'
-    +'<div style="font-size:11px;color:var(--text3);font-family:var(--mono);background:var(--bg3);border:1px solid var(--bdr);border-radius:8px;padding:5px 12px" id="md-clock">--:--</div>'
+    +'<div><div style="font-size:20px;font-weight:600">'+greeting+', Thiago 👋</div>'
+    +'<div style="font-size:12px;color:var(--text3);margin-top:3px">'+DAYS_S[d.getDay()]+', '+d.getDate()+' de '+MONTHS_PT[d.getMonth()]+' de '+d.getFullYear()+'</div></div>'
+    +'<div id="md-clock" style="font-size:11px;color:var(--text3);font-family:var(--mono);background:var(--bg3);border:1px solid var(--bdr);border-radius:8px;padding:5px 12px">--:--</div>'
     +'</div>';
 
-  // ── PROGRESS BAR ──
-  out+='<div class="md-section"><div class="md-section-title">Progresso do dia</div>';
-  out+='<div class="day-prog-wrap">';
-  out+='<div class="day-prog-row"><div class="day-prog-label">MITs</div><div class="day-prog-bar"><div class="day-prog-fill" style="width:'+Math.round(mitsDone/mitsTotal*100)+'%;background:var(--red)"></div></div><div class="day-prog-val">'+mitsDone+'/'+mitsTotal+'</div></div>';
-  out+='<div class="day-prog-row"><div class="day-prog-label">Agenda</div><div class="day-prog-bar"><div class="day-prog-fill" style="width:'+(calTotal?Math.round(calDone/calTotal*100):0)+'%;background:var(--emerald)"></div></div><div class="day-prog-val">'+calDone+'/'+(calTotal||0)+'</div></div>';
-  out+='<div class="day-prog-row"><div class="day-prog-label">Pomodoros</div><div class="day-prog-bar"><div class="day-prog-fill" style="width:'+Math.min(100,Math.round(pomoCount/8*100))+'%;background:var(--s-orange)"></div></div><div class="day-prog-val">'+pomoCount+'/8</div></div>';
-  out+='</div></div>';
-
-  // ── ALERTS ──
+  // Alerts
   var alerts=getUpcomingAlerts();
   if(alerts.length){
-    out+='<div class="md-section"><div class="md-section-title">&#128680; Alertas de prazo (próximos 7 dias)</div>';
-    alerts.forEach(function(a){
-      var tagColors={'traf':'var(--red)','dir':'var(--s-blue)','pes':'var(--s-yellow)'};
+    out+='<div class="md-section"><div class="md-section-title">🚨 Alertas de prazo — próximos 7 dias</div>';
+    var tagColors={traf:'var(--red)',dir:'var(--s-blue)',pes:'var(--s-yellow)'};
+    for(var ai=0;ai<alerts.length;ai++){
+      var a=alerts[ai];
       var diffLabel=a.diff===0?'Hoje!':a.diff===1?'Amanhã':a.diff+' dias';
       out+='<div class="alert-card'+(a.urgent?'':' warn')+'">'
         +'<div class="alert-dot'+(a.urgent?' urgent':' warn')+'"></div>'
@@ -1333,118 +1324,64 @@ function renderMeuDia(el){
         +'<div class="alert-text">'+escH(a.text)+'</div>'
         +'<div class="alert-date" style="color:'+(a.urgent?'var(--red)':'var(--s-yellow)')+'">'+diffLabel+'</div>'
         +'</div>';
-    });
+    }
     out+='</div>';
   }
 
-  // ── POMODORO ──
-  out+='<div class="md-section"><div class="md-section-title">Timer Pomodoro</div>';
-  out+='<div class="pomo-wrap" id="pomo-wrap">';
-  var circumference=2*Math.PI*54;
-  out+='<div class="pomo-ring" id="pomo-ring">'
-    +'<svg viewBox="0 0 120 120"><circle class="track" cx="60" cy="60" r="54" stroke-dasharray="'+circumference+'"/>'
-    +'<circle class="fill" id="pomo-fill" cx="60" cy="60" r="54" stroke-dasharray="'+circumference+'" stroke-dashoffset="0"/></svg>'
-    +'<div class="pomo-time" id="pomo-time">25:00</div>'
-    +'<div class="pomo-label" id="pomo-label">FOCO</div>'
-    +'</div>';
-  out+='<div class="pomo-task" id="pomo-task-label">Selecione uma MIT abaixo para focar</div>';
-  out+='<div class="pomo-btns">'
-    +'<button class="pomo-btn" onclick="pomoSkip()">⏭ Pular</button>'
-    +'<button class="pomo-btn primary" id="pomo-play-btn" onclick="pomoToggle()">▶ Iniciar</button>'
-    +'<button class="pomo-btn" onclick="pomoReset()">↺ Resetar</button>'
-    +'</div>';
-  out+='<div class="pomo-count" id="pomo-count">';
-  for(var pi=0;pi<8;pi++)out+='<div class="pomo-dot'+(pi<pomoCount?' done':'')+'" id="pomo-dot-'+pi+'"></div>';
-  out+='</div></div></div>';
-
-  // ── 3 MITs ──
-  out+='<div class="md-section"><div class="md-section-title">3 Tarefas Essenciais do Dia (MITs)</div>';
-  out+='<div style="font-size:11px;color:var(--text3);margin-bottom:12px">Defina as 3 tarefas que, se feitas, fazem o dia valer. Clique no número para iniciar o Pomodoro.</div>';
+  // MITs
+  out+='<div class="md-section"><div class="md-section-title">📌 Anotações rápidas do dia</div>';
   for(var mi=0;mi<3;mi++){
-    var m=md.mits[mi]||{id:uid(),text:'',tag:'traf',done:false};
+    var m=md.mits[mi]||{id:uid(),text:'',done:false};
     out+='<div class="mit-card'+(m.done?' done-card':'')+'">'
-      +'<div class="mit-num'+(m.done?' done-num':'')+'" style="cursor:pointer" onclick="startPomoMIT(\''+md.mits[mi].id+'\')" title="Iniciar Pomodoro nesta tarefa">'+(mi+1)+'</div>'
-      +'<input style="flex:1;background:transparent;border:none;outline:none;font-size:14px;font-weight:500;color:'+(m.done?'var(--text3)':'var(--text)')+';text-decoration:'+(m.done?'line-through':'none')+';font-family:var(--sans)" '
-      +'id="mit-inp-'+mi+'" placeholder="MIT '+(mi+1)+'..." value="'+escH(m.text)+'" '
-      +'onchange="saveMIT('+mi+',this.value)" oninput="saveMIT('+mi+',this.value)">'
-      +'<select style="background:var(--bg3);border:1px solid var(--bdr2);border-radius:6px;color:var(--text2);font-size:11px;padding:3px 6px;cursor:pointer;outline:none" onchange="saveMITTag('+mi+',this.value)">'
-      +'<option value="traf"'+(m.tag==='traf'?' selected':'')+'>Tráfego</option>'
-      +'<option value="dir"'+(m.tag==='dir'?' selected':'')+'>Direito</option>'
-      +'<option value="pes"'+(m.tag==='pes'?' selected':'')+'>Pessoal</option>'
-      +'</select>'
-      +'<div class="mit-cb'+(m.done?' done':'')+'" onclick="toggleMIT(\''+m.id+'\')">'+(m.done?'✓':'')+'</div>'
+      +'<div class="mit-num'+(m.done?' done-num':'')+'">'+(mi+1)+'</div>'
+      +'<input style="flex:1;background:transparent;border:none;outline:none;font-size:14px;font-weight:500;'
+      +'color:'+(m.done?'var(--text3)':'var(--text)')+';text-decoration:'+(m.done?'line-through':'none')+';font-family:var(--sans)" '
+      +'id="mit-inp-'+mi+'" placeholder="Prioridade '+(mi+1)+'..." value="'+escH(m.text)+'" oninput="saveMIT('+mi+',this.value)">'
+      +'<div class="mit-cb'+(m.done?' done':'')+'" onclick="toggleMIT(&quot;'+m.id+'&quot;)">'+(m.done?'&#10003;':'')+'</div>'
       +'</div>';
   }
   out+='</div>';
 
-  // ── CALENDAR TASKS TODAY ──
-  out+='<div class="md-section"><div class="md-section-title">Agenda de hoje ('+today+')</div>';
-  if(calTasks.length){
-    out+='<div style="font-size:11px;color:var(--text3);margin-bottom:10px">Tarefas marcadas no calendário para hoje. Marque diretamente aqui.</div>';
-    for(var ci=0;ci<calTasks.length;ci++){
-      var ct=calTasks[ci];
-      out+='<div class="cal-task-item" style="'+(ct.done?'opacity:.5':'')+'"> '
-        +'<div class="cal-task-tag '+ct.tag+'"></div>'
-        +'<div class="cal-task-text'+(ct.done?' cal-task-done':'')+'">'+escH(ct.text)+'</div>'
-        +'<span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:99px;background:'+(tagBg[ct.tag]||'var(--bg4)')+';color:'+(tagColors[ct.tag]||'var(--text2)')+'">'+tagLabel[ct.tag]+'</span>'
-        +'<div class="mit-cb'+(ct.done?' done':'')+'" onclick="toggleCalTaskMD(\''+ct.id+'\')">'+(ct.done?'✓':'')+'</div>'
-        +'</div>';
+  // Task columns
+  var b=D.boards.find(function(x){return x.id==='meudia';});
+  if(b){
+    var groups=b.groups||[];
+    var groupColors={'md-diario':'var(--red)','md-pessoal':'var(--s-yellow)','md-direito':'var(--s-blue)','md-auto':'var(--s-purple)'};
+    out+='<div class="md-section"><div class="md-section-title">📋 Tarefas</div>';
+    out+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:16px">';
+    for(var gi=0;gi<groups.length;gi++){
+      var g=groups[gi];
+      var items=(b.items||[]).filter(function(it){return it.group===g.id;});
+      var color=groupColors[g.id]||'var(--text2)';
+      out+='<div style="background:var(--surface);border:1px solid var(--bdr);border-radius:var(--radius-lg);overflow:hidden">'
+        +'<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 13px;border-bottom:1px solid var(--bdr);border-left:3px solid '+color+'">'
+        +'<div style="font-size:12px;font-weight:600">'+escH(g.name)+'</div>'
+        +'<div style="font-size:10px;color:var(--text3);font-family:var(--mono)">'+items.length+'</div>'
+        +'</div><div style="padding:6px 8px">';
+      for(var ii=0;ii<items.length;ii++){
+        var it=items[ii];
+        var done=it.status==='encerrado';
+        out+='<div style="display:flex;align-items:center;gap:7px;padding:7px 6px;border-radius:7px;cursor:pointer" '
+          +'onmouseover="this.style.background=\"rgba(255,255,255,.04)\"" onmouseout="this.style.background=\"transparent\"">'
+          +'<div style="width:16px;height:16px;border-radius:5px;border:1.5px solid '+(done?'var(--emerald)':'var(--bdr2)')+';background:'+(done?'var(--emerald-dim)':'none')+';display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--emerald);flex-shrink:0" '
+          +'onclick="toggleMDTask(&quot;'+it.id+'&quot;)">'+( done?'&#10003;':'')+'</div>'
+          +'<div style="flex:1;font-size:13px;text-decoration:'+(done?'line-through':'none')+';color:'+(done?'var(--text3)':'var(--text)')+'" '
+          +'onclick="openItem(&quot;'+it.id+'&quot;)" title="Clique para editar">'+escH(it.name)+'</div>'
+          +'</div>';
+      }
+      out+='<div style="padding:4px 6px 8px">'
+        +'<div style="display:flex;gap:5px;margin-top:4px">'
+        +'<input class="add-inp" id="mdt-'+g.id+'" placeholder="Nova tarefa..." style="font-size:12px;padding:6px 9px;flex:1" data-gid="'+g.id+'" onkeydown="if(event.key===&apos;Enter&apos;)addMDTask(this.dataset.gid)">'
+        +'<button class="add-btn" data-gid2="'+g.id+'" onclick="addMDTask(this.dataset.gid2)" style="width:30px;height:30px;font-size:16px">+</button>'
+        +'</div></div></div></div>';
     }
-  } else {
-    out+='<div style="background:var(--surface);border:1px solid var(--bdr);border-radius:var(--radius-lg);padding:20px;text-align:center;color:var(--text3);font-size:13px">Nenhuma tarefa no calendário para hoje.<br><span style="font-size:11px">Adicione tarefas na aba Agenda.</span></div>';
+    out+='</div></div>';
   }
-  out+='</div>';
-
-  // ── SEQUENTIAL CHECKLIST ──
-  var seqAll=[].concat(
-    md.mits.filter(function(m){return m.text;}).map(function(m){return{id:m.id,text:m.text,tag:m.tag,src:'MIT'};}),
-    calTasks.map(function(t){return{id:t.id,text:t.text,tag:t.tag,src:'Agenda'};})
-  );
-  var seqDone=md.seqDone||[];
-  out+='<div class="md-section"><div class="md-section-title">Lista sequencial do dia</div>';
-  out+='<div style="font-size:11px;color:var(--text3);margin-bottom:10px">Foque em uma tarefa por vez. Só avance para a próxima depois de concluir a atual.</div>';
-  if(seqAll.length){
-    var firstPending=-1;
-    for(var si=0;si<seqAll.length;si++){if(seqDone.indexOf(seqAll[si].id)<0){firstPending=si;break;}}
-    for(var si2=0;si2<seqAll.length;si2++){
-      var sq=seqAll[si2];
-      var isDone=seqDone.indexOf(sq.id)>=0;
-      var isCurrent=si2===firstPending;
-      var cls2=isDone?'done-seq':isCurrent?'':'pending';
-      out+='<div class="seq-card '+cls2+'">'
-        +'<div class="seq-num">'+sq.src+' '+(si2+1)+'</div>'
-        +'<div style="display:flex;align-items:center;gap:10px">'
-        +'<div class="seq-title" style="'+(isDone?'text-decoration:line-through;color:var(--text3)':'')+'">'+escH(sq.text)+'</div>'
-        +(isCurrent?'<button onclick="markSeqDone(\''+sq.id+'\')" style="margin-left:auto;padding:5px 14px;background:var(--red);color:white;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;flex-shrink:0">Concluir →</button>':'')
-        +(isDone?'<span style="margin-left:auto;color:var(--emerald);font-size:13px;flex-shrink:0">✓</span>':'')
-        +'</div></div>';
-    }
-  } else {
-    out+='<div style="background:var(--surface);border:1px solid var(--bdr);border-radius:var(--radius-lg);padding:20px;text-align:center;color:var(--text3);font-size:13px">Preencha os MITs acima para ativar a lista sequencial.</div>';
-  }
-  out+='</div>';
-
-  // ── REVISÃO NOTURNA ──
-  out+='<div class="md-section"><div class="md-section-title">Revisão do dia (2 min)</div>';
-  out+='<div style="font-size:11px;color:var(--text3);margin-bottom:10px">Preencha antes de dormir. Leva 2 minutos e muda tudo.</div>';
-  out+='<div class="review-q"><label>O que eu fiz hoje?</label>'
-    +'<textarea rows="2" placeholder="Escreva suas conquistas do dia..." onchange="saveReview(\'fiz\',this.value)">'+escH(md.review.fiz||'')+'</textarea></div>';
-  out+='<div class="review-q"><label>O que ficou pendente?</label>'
-    +'<textarea rows="2" placeholder="O que não foi feito hoje..." onchange="saveReview(\'ficou\',this.value)">'+escH(md.review.ficou||'')+'</textarea></div>';
-  out+='<div class="review-q"><label>Minha prioridade número 1 amanhã</label>'
-    +'<textarea rows="2" placeholder="A tarefa mais importante de amanhã..." onchange="saveReview(\'amanha\',this.value)">'+escH(md.review.amanha||'')+'</textarea></div>';
-  out+='<button onclick="saveReview(\'_save\',\'\')" style="width:100%;padding:11px;background:var(--red);color:white;border:none;border-radius:var(--radius-sm);cursor:pointer;font-size:13px;font-weight:600;margin-top:4px">Salvar revisão</button>';
-  out+='</div>';
 
   out+='<div style="height:40px"></div>';
   el.innerHTML=out;
-
-  // Start clock
   updateMDClock();
   if(!window._mdClockInt)window._mdClockInt=setInterval(updateMDClock,1000);
-
-  // Restore pomodoro UI state
-  updatePomoUI();
 }
 
 function updateMDClock(){
@@ -1454,263 +1391,28 @@ function updateMDClock(){
   el.textContent=String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');
 }
 
-// ── MIT FUNCTIONS ────────────────────────────────────────────────────────────
-function saveMIT(idx,val){
-  var md=getMD();md.mits[idx].text=val;saveMD(md);
+function addMDTask(gid){
+  var b=D.boards.find(function(x){return x.id==='meudia';});if(!b)return;
+  var inp=document.querySelector('[data-gid="'+gid+'"]');if(!inp)inp=document.getElementById('mdt-'+gid);if(!inp)return;
+  var text=inp.value.trim();if(!text)return;
+  if(!b.items)b.items=[];
+  b.items.push({id:uid(),group:gid,name:text,status:'novo',priority:'',notes:'',comments:[],links:[]});
+  addLog('Tarefa: '+text);inp.value='';save();renderContent();
 }
-function saveMITTag(idx,tag){
-  var md=getMD();md.mits[idx].tag=tag;saveMD(md);
+function toggleMDTask(id){
+  var b=D.boards.find(function(x){return x.id==='meudia';});if(!b)return;
+  var it=(b.items||[]).find(function(x){return x.id===id;});if(!it)return;
+  it.status=it.status==='encerrado'?'novo':'encerrado';
+  addLog((it.status==='encerrado'?'Concluída':'Reaberta')+': '+it.name);
+  save();renderContent();
 }
-function toggleMIT(id){
-  var md=getMD();
-  var m=md.mits.find(function(x){return x.id===id;});
-  if(m){m.done=!m.done;addLog((m.done?'MIT concluída':'MIT reaberta')+': '+m.text);}
-  saveMD(md);renderContent();
-}
+function saveMIT(idx,val){var md=getMD();if(!md.mits[idx])md.mits[idx]={id:uid(),text:'',done:false};md.mits[idx].text=val;saveMD(md);}
+function toggleMIT(id){var md=getMD();var m=md.mits.find(function(x){return x.id===id;});if(m)m.done=!m.done;saveMD(md);renderContent();}
+function saveReview(key,val){var md=getMD();if(key==='_save'){addLog('Revisão salva');alert('Salvo!');}else{if(!md.review)md.review={};md.review[key]=val;}saveMD(md);}
 function toggleCalTaskMD(taskId){
-  var agendaB=D.boards.find(function(b){return b.id==='agenda';});
-  if(!agendaB)return;
-  var t=(agendaB.items||[]).find(function(x){return x.id===taskId;});
-  if(t){t.done=!t.done;addLog((t.done?'Tarefa concluída':'Reaberta')+': '+t.text);save();}
-  renderContent();
-}
-function markSeqDone(id){
-  var md=getMD();
-  if(!md.seqDone)md.seqDone=[];
-  if(md.seqDone.indexOf(id)<0)md.seqDone.push(id);
-  // Also mark MIT done if applicable
-  var m=md.mits.find(function(x){return x.id===id;});
-  if(m&&!m.done){m.done=true;addLog('MIT concluída via sequencial: '+m.text);}
-  // Also mark cal task done
-  var agendaB=D.boards.find(function(b){return b.id==='agenda';});
-  if(agendaB){var t=(agendaB.items||[]).find(function(x){return x.id===id;});if(t&&!t.done){t.done=true;save();}}
-  saveMD(md);renderContent();
-}
-function startPomoMIT(mitId){
-  var md=getMD();
-  var m=md.mits.find(function(x){return x.id===mitId;});
-  if(m&&m.text){
-    pomoState.taskName=m.text;
-    pomoReset();
-    var lbl=document.getElementById('pomo-task-label');
-    if(lbl)lbl.textContent='Focando em: '+m.text;
-  }
-}
-function saveReview(key,val){
-  var md=getMD();
-  if(key==='_save'){addLog('Revisão noturna salva');alert('Revisão salva! Bom descanso.');}
-  else{if(!md.review)md.review={};md.review[key]=val;}
-  saveMD(md);
-}
-
-// ── POMODORO ─────────────────────────────────────────────────────────────────
-function pomoToggle(){
-  if(pomoState.running){
-    clearInterval(pomoState.interval);pomoState.running=false;
-    var btn=document.getElementById('pomo-play-btn');
-    if(btn)btn.textContent='▶ Continuar';
-  } else {
-    pomoState.running=true;
-    var btn2=document.getElementById('pomo-play-btn');
-    if(btn2)btn2.textContent='⏸ Pausar';
-    pomoState.interval=setInterval(pomoTick,1000);
-  }
-}
-function pomoTick(){
-  if(pomoState.seconds<=0){
-    clearInterval(pomoState.interval);pomoState.running=false;
-    if(!pomoState.isBreak){
-      // Focus session done
-      var md=getMD();md.pomoCount=(md.pomoCount||0)+1;saveMD(md);
-      var dot=document.getElementById('pomo-dot-'+md.pomoCount-1);
-      if(dot)dot.classList.add('done');
-      // Start break
-      pomoState.isBreak=true;
-      pomoState.seconds=md.pomoCount%4===0?15*60:5*60;
-      pomoState.total=pomoState.seconds;
-      var ring=document.getElementById('pomo-ring');
-      if(ring)ring.classList.add('break');
-      var lbl=document.getElementById('pomo-label');
-      if(lbl)lbl.textContent=md.pomoCount%4===0?'PAUSA LONGA':'PAUSA';
-      try{new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAA').play();}catch(e){}
-    } else {
-      pomoState.isBreak=false;pomoState.seconds=25*60;pomoState.total=25*60;
-      var ring2=document.getElementById('pomo-ring');
-      if(ring2)ring2.classList.remove('break');
-      var lbl2=document.getElementById('pomo-label');
-      if(lbl2)lbl2.textContent='FOCO';
-    }
-    updatePomoUI();
-    return;
-  }
-  pomoState.seconds--;
-  updatePomoUI();
-}
-function updatePomoUI(){
-  var mins=Math.floor(pomoState.seconds/60);
-  var secs=pomoState.seconds%60;
-  var t=document.getElementById('pomo-time');
-  if(t)t.textContent=String(mins).padStart(2,'0')+':'+String(secs).padStart(2,'0');
-  var fill=document.getElementById('pomo-fill');
-  if(fill){
-    var circumference=2*Math.PI*54;
-    var pct=pomoState.seconds/pomoState.total;
-    fill.style.strokeDashoffset=circumference*(1-pct);
-  }
-  var btn=document.getElementById('pomo-play-btn');
-  if(btn)btn.textContent=pomoState.running?'⏸ Pausar':'▶ '+(pomoState.seconds<pomoState.total?'Continuar':'Iniciar');
-}
-function pomoReset(){
-  clearInterval(pomoState.interval);
-  pomoState.running=false;pomoState.isBreak=false;
-  pomoState.seconds=25*60;pomoState.total=25*60;
-  var ring=document.getElementById('pomo-ring');
-  if(ring)ring.classList.remove('break');
-  var lbl=document.getElementById('pomo-label');
-  if(lbl)lbl.textContent='FOCO';
-  updatePomoUI();
-}
-function pomoSkip(){
-  clearInterval(pomoState.interval);pomoState.running=false;
-  pomoState.isBreak=!pomoState.isBreak;
-  pomoState.seconds=pomoState.isBreak?5*60:25*60;
-  pomoState.total=pomoState.seconds;
-  var ring=document.getElementById('pomo-ring');
-  if(ring)ring.classList.toggle('break',pomoState.isBreak);
-  updatePomoUI();
-}
-
-
-
-// ══════════════════════════════════════════════
-//  DESPESAS
-// ══════════════════════════════════════════════
-var DESP_KEY='tm_despesas_v1';
-var DESP_CATS=['ASAAS','OAB','Ferramentas','Escritório','Marketing','Outros'];
-
-function loadDesp(){
-  try{var r=localStorage.getItem(DESP_KEY);if(r)return JSON.parse(r);}catch(e){}
-  return{items:[
-    {id:uid(),name:'ASAAS',cat:'ASAAS',value:0,type:'fixo'},
-    {id:uid(),name:'Anuidade OAB',cat:'OAB',value:0,type:'fixo'},
-  ]};
-}
-function saveDesp(d){localStorage.setItem(DESP_KEY,JSON.stringify(d));sbSaveDesp();}
-
-function renderDespesas(el){
-  var desp=loadDesp();
-  var items=desp.items||[];
-
-  // Group by cat
-  var groups={};
-  DESP_CATS.forEach(function(c){groups[c]=[];});
-  items.forEach(function(it){
-    var c=it.cat||'Outros';
-    if(!groups[c])groups[c]=[];
-    groups[c].push(it);
-  });
-
-  var totalMes=items.filter(function(x){return x.type==='fixo';})
-    .reduce(function(s,x){return s+(parseFloat(x.value)||0);},0);
-  var totalVar=items.filter(function(x){return x.type==='variavel';})
-    .reduce(function(s,x){return s+(parseFloat(x.value)||0);},0);
-  var totalDesp=totalMes+totalVar;
-
-  // Get revenue for profit calc
-  var mk=curKey();
-  var trafBoard=D.boards.find(function(b){return b.id==='cli';});
-  var advBoard=D.boards.find(function(b){return b.id==='adv';});
-  var recTraf=(trafBoard?trafBoard.items||[]:[]).filter(function(c){return c.group==='g-ativo';})
-    .reduce(function(s,c){var p=(c.payments||[]).find(function(x){return x.month===mk;});return s+(p&&p.paid?(p.value||c.value||0):0);},0);
-  var recAdv=(advBoard?advBoard.items||[]:[])
-    .reduce(function(s,c){return s+(c.payments||[]).filter(function(p){return p.paid;}).reduce(function(ss,p){return ss+(p.value||0);},0);},0);
-  var recTotal=recTraf+recAdv;
-  var lucro=recTotal-totalDesp;
-
-  var out='';
-
-  // Lucro card
-  out+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">';
-  out+='<div class="lucro-card" style="flex-direction:column;align-items:flex-start">'
-    +'<div class="lucro-label">Receita do mês</div>'
-    +'<div class="lucro-val" style="color:var(--emerald)">'+fmtMoney(recTotal)+'</div></div>';
-  out+='<div class="lucro-card" style="flex-direction:column;align-items:flex-start;border-color:rgba(192,40,45,.35)">'
-    +'<div class="lucro-label">Total despesas</div>'
-    +'<div class="lucro-val" style="color:var(--red)">'+fmtMoney(totalDesp)+'</div></div>';
-  out+='<div class="lucro-card" style="flex-direction:column;align-items:flex-start;border-color:'+(lucro>=0?'rgba(16,185,129,.3)':'rgba(192,40,45,.4)')+'">'
-    +'<div class="lucro-label">Lucro estimado</div>'
-    +'<div class="lucro-val" style="color:'+(lucro>=0?'var(--emerald)':'var(--red)')+'">'+fmtMoney(lucro)+'</div></div>';
-  out+='</div>';
-
-  // Add new expense bar
-  out+='<div style="background:var(--surface);border:1px solid var(--bdr);border-radius:var(--radius-lg);padding:14px 16px;margin-bottom:14px">'
-    +'<div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:10px">Adicionar despesa</div>'
-    +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
-    +'<input class="add-inp" id="desp-name" placeholder="Nome da despesa..." style="flex:2;min-width:140px">'
-    +'<input class="add-inp" type="number" id="desp-val" placeholder="Valor R$" style="width:110px;flex-shrink:0">'
-    +'<select class="add-inp" id="desp-cat" style="flex:1;min-width:110px">'
-    +DESP_CATS.map(function(c){return'<option value="'+c+'">'+c+'</option>';}).join('')
-    +'</select>'
-    +'<select class="add-inp" id="desp-type" style="width:100px;flex-shrink:0">'
-    +'<option value="fixo">Fixo</option>'
-    +'<option value="variavel">Variável</option>'
-    +'</select>'
-    +'<button class="add-btn" onclick="addDesp()" style="flex-shrink:0">+</button>'
-    +'</div></div>';
-
-  // Categories
-  DESP_CATS.forEach(function(cat){
-    var catItems=groups[cat]||[];
-    if(!catItems.length)return;
-    var catTotal=catItems.reduce(function(s,x){return s+(parseFloat(x.value)||0);},0);
-    out+='<div class="board-table-wrap" style="margin-bottom:10px">'
-      +'<div class="desp-cat-header">'
-      +'<div class="desp-cat-name">'+cat+'</div>'
-      +'<div class="desp-cat-total">'+fmtMoney(catTotal)+'</div>'
-      +'</div>';
-    catItems.forEach(function(it){
-      out+='<div class="desp-row">'
-        +'<div class="desp-name">'+escH(it.name)+'</div>'
-        +'<input style="font-family:var(--mono);font-size:13px;color:var(--red);'
-        +'background:transparent;border:none;outline:none;width:100px;text-align:right" '
-        +'type="number" value="'+(it.value||0)+'" onchange="updDesp(\''+it.id+'\',this.value)">'
-        +'<span class="desp-type '+it.type+'">'+(it.type==='fixo'?'Fixo':'Variável')+'</span>'
-        +'<button class="desp-del" onclick="delDesp(\''+it.id+'\')">&#215;</button>'
-        +'</div>';
-    });
-    out+='</div>';
-  });
-
-  out+='<div style="height:40px"></div>';
-  el.innerHTML=out;
-}
-
-function addDesp(){
-  var name=(document.getElementById('desp-name')||{value:''}).value.trim();
-  if(!name)return;
-  var val=parseFloat((document.getElementById('desp-val')||{value:'0'}).value)||0;
-  var cat=(document.getElementById('desp-cat')||{value:'Outros'}).value;
-  var type=(document.getElementById('desp-type')||{value:'fixo'}).value;
-  var desp=loadDesp();
-  desp.items.push({id:uid(),name:name,cat:cat,value:val,type:type});
-  saveDesp(desp);
-  addLog('Despesa adicionada: '+name+' — '+fmtMoney(val));
-  renderContent();
-}
-function updDesp(id,val){
-  var desp=loadDesp();
-  var it=desp.items.find(function(x){return x.id===id;});
-  if(it){it.value=parseFloat(val)||0;saveDesp(desp);}
-  // refresh lucro cards without full re-render
-  renderContent();
-}
-function delDesp(id){
-  var desp=loadDesp();
-  var it=desp.items.find(function(x){return x.id===id;});
-  if(it)addLog('Despesa removida: '+it.name);
-  desp.items=desp.items.filter(function(x){return x.id!==id;});
-  saveDesp(desp);
-  renderContent();
+  var agendaB=D.boards.find(function(b){return b.id==='agenda';});if(!agendaB)return;
+  var t=(agendaB.items||[]).find(function(x){return x.id===taskId;});if(!t)return;
+  t.done=!t.done;addLog((t.done?'Concluída':'Reaberta')+': '+t.text);save();renderContent();
 }
 
 // ══════════════════════════════════════════════
@@ -1834,6 +1536,8 @@ function renderCalendarBoard(el){
     if(cb)toggleCalTask(cb.getAttribute('data-taskid'));
     var del=e.target.closest('[data-action="delete"]');
     if(del)delCalTask(del.getAttribute('data-taskid'));
+    var edt=e.target.closest('[data-action="edit"]');
+    if(edt)editCalTask(edt.getAttribute('data-taskid'));
   });
 }
 
@@ -1847,6 +1551,43 @@ function addCalTask(){
   addLog('Tarefa: '+text+' ('+selDate+')');renderContent();
 }
 function toggleCalTask(id){const b=board();const t=(b.items||[]).find(x=>x.id===id);if(!t)return;t.done=!t.done;addLog((t.done?'Concluída':'Reaberta')+': '+t.text);save();renderContent();}
+function editCalTask(taskId){
+  var agendaB=D.boards.find(function(b){return b.id==='agenda';});if(!agendaB)return;
+  var t=(agendaB.items||[]).find(function(x){return x.id===taskId;});if(!t)return;
+  var body=document.getElementById('modal-add-body');
+  body.innerHTML='<div class="modal-title">Editar tarefa</div>'
+    +'<div class="mfield"><label>Tarefa</label><input class="minput" id="ect-text" value="'+escH(t.text||'')+'"></div>'
+    +'<div class="mrow">'
+    +'<div class="mfield"><label>Data</label><input class="minput" type="date" id="ect-date" value="'+(t.date||'')+'"></div>'
+    +'<div class="mfield"><label>Categoria</label><select class="minput" id="ect-tag">'
+    +'<option value="traf"'+(t.tag==='traf'?' selected':'')+'>Tráfego</option>'
+    +'<option value="dir"'+(t.tag==='dir'?' selected':'')+'>Direito</option>'
+    +'<option value="pes"'+(t.tag==='pes'?' selected':'')+'>Pessoal</option>'
+    +'</select></div></div>'
+    +'<div class="mfield"><label>Tipo</label><select class="minput" id="ect-urgency">'
+    +'<option value="0"'+(!t.prazo?' selected':'')+'>Normal</option>'
+    +'<option value="1"'+(t.prazo?' selected':'')+'>🚨 Prazo</option>'
+    +'</select></div>'
+    +'<div class="mfield"><label>Notas</label><textarea class="minput" id="ect-notes" rows="2">'+escH(t.notes||'')+'</textarea></div>'
+    +'<div class="mbtn-row">'
+    +'<button class="mbtn secondary" onclick="closeModal(&apos;modal-add&apos;)">Cancelar</button>'
+    +'<button class="mbtn danger" onclick="deleteCalTask(&quot;'+taskId+'&quot;)" style="flex:0;padding:11px 16px">Excluir</button>'
+    +'<button class="mbtn primary" onclick="saveCalTask(&quot;'+taskId+'&quot;)">Salvar</button>'
+    +'</div>';
+  openModal('modal-add');
+}
+function saveCalTask(id){
+  var agendaB=D.boards.find(function(b){return b.id==='agenda';});if(!agendaB)return;
+  var t=(agendaB.items||[]).find(function(x){return x.id===id;});if(!t)return;
+  t.text=document.getElementById('ect-text').value.trim()||t.text;
+  t.date=document.getElementById('ect-date').value||t.date;
+  t.tag=document.getElementById('ect-tag').value;
+  t.prazo=document.getElementById('ect-urgency').value==='1';
+  t.notes=document.getElementById('ect-notes').value;
+  addLog('Tarefa editada: '+t.text);
+  save();closeModal('modal-add');renderContent();
+}
+function deleteCalTask(id){
 function delCalTask(id){const b=board();const t=(b.items||[]).find(x=>x.id===id);if(t)addLog('Tarefa removida: '+t.text);b.items=(b.items||[]).filter(x=>x.id!==id);save();renderContent();}
 
 // ══════════════════════════════════════════════
@@ -2407,6 +2148,8 @@ renderSidebar();
 // Show reset helper if no boards rendered
 if(D.boards.length===0){document.getElementById('reset-helper').style.display='block';}else{document.getElementById('reset-helper').style.display='none';}
 switchBoard('meudia');
+
+}
 
 </script>
 </body>
