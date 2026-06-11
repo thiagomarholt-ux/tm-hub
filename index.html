@@ -657,12 +657,9 @@ async function sbLoad(){
   }catch(e){
     console.warn('Supabase load error (usando cache local):',e);
   }finally{
-    // Render after loading
+    // Re-render with fresh Supabase data
     renderSidebar();
-    if(D.boards.length===0){
-      document.getElementById('reset-helper').style.display='block';
-    }
-    switchBoard('meudia');
+    renderContent();
   }
 }
 // ═════════════════════════════════════════════════════════════
@@ -2148,6 +2145,8 @@ renderSidebar();
 // Show reset helper if no boards rendered
 if(D.boards.length===0){document.getElementById('reset-helper').style.display='block';}else{document.getElementById('reset-helper').style.display='none';}
 switchBoard('meudia');
+// Sync from Supabase in background and refresh
+sbLoad();
 
 }
 
