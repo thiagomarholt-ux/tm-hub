@@ -659,7 +659,8 @@ async function sbLoad(){
   }finally{
     // Re-render with fresh Supabase data
     renderSidebar();
-    renderContent();
+    switchBoard(curBoardId||'meudia');
+    document.getElementById('reset-helper').style.display='none';
   }
 }
 // ═════════════════════════════════════════════════════════════
@@ -2146,7 +2147,7 @@ renderSidebar();
 if(D.boards.length===0){document.getElementById('reset-helper').style.display='block';}else{document.getElementById('reset-helper').style.display='none';}
 switchBoard('meudia');
 // Sync from Supabase in background and refresh
-sbLoad();
+setTimeout(sbLoad, 100);
 
 }
 
