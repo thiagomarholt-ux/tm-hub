@@ -437,6 +437,7 @@ textarea.minput{resize:none}
 </head>
 <body>
 <div id="emergency-reset" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:#c0282d;color:white;padding:12px 20px;text-align:center;font-family:Inter,sans-serif;font-size:13px;gap:12px;align-items:center;justify-content:center">⚠️ Dashboard com problema de dados.<button onclick="hardReset()" style="background:white;color:#c0282d;border:none;border-radius:6px;padding:6px 16px;cursor:pointer;font-weight:600;font-size:13px;margin-left:8px">Restaurar agora</button></div><div id="reset-helper" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9998;background:#1e1e22;border:1px solid #c0282d;border-radius:14px;padding:28px 32px;text-align:center;font-family:Inter,sans-serif;box-shadow:0 20px 60px rgba(0,0,0,.6)"><div style="font-size:32px;margin-bottom:12px">⚠️</div><div style="font-size:16px;font-weight:600;color:#f2f2f7;margin-bottom:8px">Dashboard sem dados</div><div style="font-size:13px;color:#888;margin-bottom:20px">Clique para restaurar todos os quadros e dados iniciais</div><button onclick="hardReset()" style="background:#c0282d;color:white;border:none;border-radius:8px;padding:12px 28px;cursor:pointer;font-weight:600;font-size:14px;width:100%">🔄 Restaurar Dashboard</button></div>
+<input type="file" id="backup-file-input" accept=".json" style="display:none" onchange="handleImport(this)">
 <div id="app">
 
 <!-- ═══════════ SIDEBAR ═══════════ -->
@@ -462,6 +463,10 @@ textarea.minput{resize:none}
       <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0"/></svg>
       <span class="sidebar-label" id="sidebar-footer-text">Log de alterações</span>
       <div class="notif-dot" id="notif-dot" style="display:none"></div>
+    </div>
+    <div style="display:flex;gap:6px;margin-top:8px;padding:0 2px">
+      <button onclick="exportBackup()" title="Exportar backup JSON" style="flex:1;display:flex;align-items:center;justify-content:center;gap:5px;padding:8px;background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.25);border-radius:var(--radius-sm);color:var(--emerald);cursor:pointer;font-size:11px;font-weight:600;transition:all .15s" onmouseover="this.style.background='rgba(16,185,129,.22)'" onmouseout="this.style.background='rgba(16,185,129,.12)'"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg><span class="sidebar-label">Backup</span></button>
+      <button onclick="importBackup()" title="Importar backup JSON" style="flex:1;display:flex;align-items:center;justify-content:center;gap:5px;padding:8px;background:rgba(59,130,246,.10);border:1px solid rgba(59,130,246,.22);border-radius:var(--radius-sm);color:var(--s-blue);cursor:pointer;font-size:11px;font-weight:600;transition:all .15s" onmouseover="this.style.background='rgba(59,130,246,.20)'" onmouseout="this.style.background='rgba(59,130,246,.10)'"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="3" x2="12" y2="15"/></svg><span class="sidebar-label">Restaurar</span></button>
     </div>
   </div>
 </div>
@@ -901,7 +906,7 @@ function resetDashboard(){
 }
 function renderSidebar(){
   const el=document.getElementById('boards-list');
-  const BOARD_DESCS={fin:'Receita e pagamentos',cli:'Gestão de clientes',adv:'Processos e prazos',leads:'Funil de prospecção',agenda:'Tarefas e calendário'};
+  const BOARD_DESCS={fin:'Receita e pagamentos',cli:'Gestão de clientes',adv:'Processos e prazos',leads:'Funil de prospecção',agenda:'Tarefas e calendário',pagamentos:'Visão de pagamentos',links:'Links e recursos',despesas:'Controle de despesas',meudia:'Foco do dia'};
   el.innerHTML=D.boards.map(b=>`
     <div class="board-item${b.id===curBoardId?' active':''}" onclick="switchBoard('${b.id}')">
       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" style="flex-shrink:0">${BOARD_ICONS[b.icon]||BOARD_ICONS.grid}</svg>
@@ -1212,13 +1217,81 @@ function filterRows(v){renderContent()}
 //  KANBAN VIEW
 // ══════════════════════════════════════════════
 function renderKanbanView(el){
-  const b=board();
+  var b=board();
+
+  // ── CLIENTS: Trello-style ─────────────────
+  if(b.type==='clients'||b.type==='advocacia'){
+    var curMo=curKey();
+    var prevMo=(function(){var d=new Date();d.setMonth(d.getMonth()-1);return mkKey(d.getFullYear(),d.getMonth()+1);})();
+    var clients=b.items||[];
+    var searchVal=(document.getElementById('search-inp')?document.getElementById('search-inp').value:'').toLowerCase();
+    if(searchVal)clients=clients.filter(function(c){return c.name.toLowerCase().includes(searchVal);});
+
+    var wrap='<div style="display:flex;gap:12px;overflow-x:auto;padding-bottom:16px;min-height:400px">';
+    clients.forEach(function(c){
+      var statusColor=STATUS_COLORS[c.status]||'var(--text3)';
+      var curP=(c.payments||[]).find(function(p){return p.month===curMo;});
+      var prevP=(c.payments||[]).find(function(p){return p.month===prevMo;});
+      var curPaid=curP&&curP.paid;
+      var prevPaid=prevP&&prevP.paid;
+      var totalPaid=(c.payments||[]).filter(function(p){return p.paid;}).reduce(function(s,p){return s+(p.value||c.value||0);},0);
+      var meses=(c.payments||[]).length;
+
+      wrap+='<div style="flex-shrink:0;width:200px;background:var(--surface);border:1px solid var(--bdr);border-radius:var(--radius-lg);overflow:hidden;display:flex;flex-direction:column">';
+      // Column header
+      wrap+='<div style="padding:10px 12px;border-bottom:1px solid var(--bdr);border-top:3px solid '+statusColor+';cursor:pointer" onclick="openItem(\''+c.id+'\')">'+
+        '<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">'+escH(c.name)+'</div>'+
+        '<div style="display:flex;align-items:center;gap:6px">'+
+          '<span class="status-pill '+c.status+'">'+( STATUS_LABELS[c.status]||c.status)+'</span>'+
+          (c.value?'<span style="font-family:var(--mono);font-size:11px;color:var(--text3)">'+fmtMoney(c.value)+'/mês</span>':'')+'</div>'+
+        '</div>';
+      // Payment cards
+      wrap+='<div style="padding:8px;flex:1;display:flex;flex-direction:column;gap:6px">';
+      // Current month card
+      wrap+='<div data-cid="'+c.id+'" data-mk="'+curMo+'" onclick="togPayDirect(this.dataset.cid,this.dataset.mk)" '+
+        'style="padding:8px 10px;border-radius:8px;cursor:pointer;border:1px solid '+(curPaid?'rgba(16,185,129,.35)':'rgba(192,40,45,.25)')+';'+
+        'background:'+(curPaid?'rgba(16,185,129,.08)':'rgba(192,40,45,.06)')+';transition:all .15s">'+
+        '<div style="font-size:9px;font-weight:600;letter-spacing:.06em;color:var(--text3);margin-bottom:3px">'+MONTHS_S[parseInt(curMo.split("-")[1])-1]+'/'+curMo.split("-")[0]+'</div>'+
+        '<div style="display:flex;align-items:center;justify-content:space-between">'+
+          '<span style="font-family:var(--mono);font-size:12px;font-weight:600;color:'+(curPaid?'var(--emerald)':'var(--red)')+'">'+fmtMoney(curP?curP.value:(c.value||0))+'</span>'+
+          '<span style="font-size:10px;font-weight:700;color:'+(curPaid?'var(--emerald)':'var(--text3)')+'">'+( curPaid?'✓':'PENDENTE')+'</span>'+
+        '</div></div>';
+      // Previous month card
+      wrap+='<div data-cid="'+c.id+'" data-mk="'+prevMo+'" onclick="togPayDirect(this.dataset.cid,this.dataset.mk)" '+
+        'style="padding:8px 10px;border-radius:8px;cursor:pointer;border:1px solid '+(prevPaid?'rgba(16,185,129,.35)':'rgba(192,40,45,.25)')+';'+
+        'background:'+(prevPaid?'rgba(16,185,129,.06)':'rgba(192,40,45,.04)')+';transition:all .15s;opacity:.8">'+
+        '<div style="font-size:9px;font-weight:600;letter-spacing:.06em;color:var(--text3);margin-bottom:3px">'+MONTHS_S[parseInt(prevMo.split("-")[1])-1]+'/'+prevMo.split("-")[0]+'</div>'+
+        '<div style="display:flex;align-items:center;justify-content:space-between">'+
+          '<span style="font-family:var(--mono);font-size:12px;font-weight:600;color:'+(prevPaid?'var(--emerald)':'var(--red)')+'">'+fmtMoney(prevP?prevP.value:(c.value||0))+'</span>'+
+          '<span style="font-size:10px;font-weight:700;color:'+(prevPaid?'var(--emerald)':'var(--text3)')+'">'+( prevPaid?'✓':'PENDENTE')+'</span>'+
+        '</div></div>';
+      // Stats footer
+      wrap+='<div style="margin-top:4px;padding:6px 4px;border-top:1px solid var(--bdr)">'
+        +'<div style="font-size:10px;color:var(--text3)">Total recebido</div>'
+        +'<div style="font-family:var(--mono);font-size:12px;font-weight:600;color:var(--emerald)">'+fmtMoney(totalPaid)+'</div>'
+        +'<div style="font-size:10px;color:var(--text3);margin-top:2px">'+meses+' meses registrados</div>'
+        +'</div>';
+      wrap+='</div></div>';
+    });
+    // Add new client column
+    wrap+='<div style="flex-shrink:0;width:180px;border:1px dashed var(--bdr2);border-radius:var(--radius-lg);'
+      +'display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text3);font-size:13px;'
+      +'flex-direction:column;gap:8px;transition:all .15s;min-height:200px" '
+      +'onclick="addClientModal(\''+b.id+'\')" '
+      +'onmouseover="this.style.borderColor=\'var(--red)\';this.style.color=\'var(--red)\'" '
+      +'onmouseout="this.style.borderColor=\'\';this.style.color=\'\'"><span style="font-size:24px">+</span>Novo cliente</div>';
+    wrap+='</div>';
+    el.innerHTML=wrap;
+    return;
+  }
+
+
   const cols=b.groups||[];
-  const searchVal=(document.getElementById('search-inp')?.value||'').toLowerCase();
+  var searchValKK=(document.getElementById('search-inp')?.value||'').toLowerCase();
 
   let html='<div class="kanban-wrap">';
   cols.forEach(g=>{
-    const items=(b.items||[]).filter(it=>it.group===g.id&&(!searchVal||it.name.toLowerCase().includes(searchVal)));
+    const items=(b.items||[]).filter(it=>it.group===g.id&&(!searchValK||it.name.toLowerCase().includes(searchValK)));
     const col=STATUS_COLORS[g.id.replace('g-','').replace('gl-','').replace('gp-','')]||'#6c6c70';
     html+=`<div class="kanban-col">
       <div class="kanban-col-head">
@@ -1593,78 +1666,129 @@ function delDesp(id){
 //  PAGAMENTOS — visão consolidada
 // ══════════════════════════════════════════════
 function renderPagamentos(el){
-  // Show current month AND previous month side by side
   var now=new Date();
+  // Build months array: previous 2 months + current
   var months=[];
-  for(var i=1;i>=0;i--){
+  for(var i=2;i>=0;i--){
     var d=new Date(now.getFullYear(),now.getMonth()-i,1);
     months.push(mkKey(d.getFullYear(),d.getMonth()+1));
   }
 
   var trafBoard=D.boards.find(function(b){return b.id==='cli';});
   var advBoard=D.boards.find(function(b){return b.id==='adv';});
-  var trafClients=(trafBoard?trafBoard.items||[]:[]).filter(function(c){return c.group==='g-ativo';});
+  var trafAtivos=(trafBoard?trafBoard.items||[]:[]).filter(function(c){return c.group==='g-ativo';});
+  var trafInativos=(trafBoard?trafBoard.items||[]:[]).filter(function(c){return c.group==='g-inativo';});
   var advClients=advBoard?advBoard.items||[]:[];
 
+  // Add new client buttons
   var out='';
-
-  // Month selector
-  out+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:18px">'
-    +'<div style="font-size:14px;font-weight:600">Visão de Pagamentos</div>'
-    +'<div style="font-size:11px;color:var(--text3);padding:4px 10px;background:var(--bg3);border:1px solid var(--bdr);border-radius:8px">'+MONTHS_PT[parseInt(months[0].split('-')[1])-1]+'/'+months[0].split('-')[0]+' — '+MONTHS_PT[parseInt(months[1].split('-')[1])-1]+'/'+months[1].split('-')[0]+'</div>'
+  out+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">'
+    +'<div style="font-size:14px;font-weight:600">Visão de Pagamentos — últimos 3 meses</div>'
+    +'<div style="display:flex;gap:8px">'
+    +'<button onclick="addClientModal(\'cli\')" style="display:flex;align-items:center;gap:6px;padding:7px 14px;background:var(--red);color:white;border:none;border-radius:var(--radius-sm);cursor:pointer;font-size:12px;font-weight:500">+ Cliente Tráfego</button>'
+    +'<button onclick="addClientModal(\'adv\')" style="display:flex;align-items:center;gap:6px;padding:7px 14px;background:var(--s-blue);color:white;border:none;border-radius:var(--radius-sm);cursor:pointer;font-size:12px;font-weight:500">+ Cliente Advocacia</button>'
+    +'</div>'
     +'</div>';
 
-  // Helper: render one payment section
-  function paySection(title,clients,color){
-    if(!clients.length)return '';
-    var s='<div class="md-section"><div class="md-section-title" style="color:'+color+'">'+title+'</div>';
-    s+='<div class="board-table-wrap">';
-    // Header
-    s+='<div style="display:grid;grid-template-columns:1fr 130px 130px;gap:0;padding:8px 14px;border-bottom:1px solid var(--bdr);background:var(--bg3)">'
-      +'<div style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3)">Cliente</div>'
-      +months.map(function(mk){
-        var[y,mo]=mk.split('-');
-        return '<div style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);text-align:center">'+MONTHS_S[parseInt(mo)-1]+'/'+y+'</div>';
-      }).join('')
+  // Months header labels
+  var mLabels=months.map(function(mk){
+    var parts=mk.split('-');
+    return MONTHS_S[parseInt(parts[1])-1]+'/'+parts[0];
+  });
+
+  // Grid columns: fixed name col + 3 month cols
+  var gridCols='220px repeat('+months.length+',1fr)';
+
+  function mkHeader(title,color){
+    return '<div class="md-section">'
+      +'<div class="md-section-title" style="color:'+color+'">'+title+'</div>'
+      +'<div class="board-table-wrap">'
+      +'<div style="display:grid;grid-template-columns:'+gridCols+';gap:0;padding:8px 14px;border-bottom:1px solid var(--bdr);background:var(--bg3)">'
+      +'<div style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3)">CLIENTE</div>'
+      +mLabels.map(function(lbl){return '<div style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);text-align:center">'+lbl+'</div>';}).join('')
       +'</div>';
-    // Client rows
-    clients.forEach(function(c){
-      var row='<div style="display:grid;grid-template-columns:1fr 130px 130px;gap:0;padding:11px 14px;border-bottom:1px solid var(--bdr);align-items:center;cursor:pointer;transition:background .15s" '
-        +'onmouseover="this.style.background=\'rgba(255,255,255,.025)\'" onmouseout="this.style.background=\'\'">>'
-        +'<div style="font-size:13px;font-weight:500;color:var(--text)" onclick="openItem(\''+c.id+'\')" title="Abrir cliente">'+escH(c.name)+'</div>';
-      months.forEach(function(mk){
-        var p=(c.payments||[]).find(function(x){return x.month===mk;});
-        var paid=p&&p.paid;
-        var val=p?p.value:(c.value||0);
-        row+='<div style="text-align:center">'
-          +'<div onclick="togPayDirect(\''+c.id+'\',\''+mk+'\')" style="display:inline-flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;padding:5px 10px;border-radius:8px;transition:background .15s;background:'+(paid?'var(--emerald-dim)':'rgba(192,40,45,.08)')+';border:1px solid '+(paid?'rgba(16,185,129,.3)':'rgba(192,40,45,.2)')+'\">'
-          +'<div style="font-family:var(--mono);font-size:13px;font-weight:500;color:'+(paid?'var(--emerald)':'var(--red)')+'">'+fmtMoney(val)+'</div>'
-          +'<div style="font-size:9px;font-weight:600;letter-spacing:.05em;color:'+(paid?'var(--emerald)':'var(--text3)')+'">'+( paid?'✓ PAGO':'PENDENTE')+'</div>'
-          +'</div>'
-          +'</div>';
-      });
-      row+='</div>';
-      s+=row;
-    });
-    // Totals row
-    s+='<div style="display:grid;grid-template-columns:1fr 130px 130px;gap:0;padding:10px 14px;background:var(--bg3)">'
-      +'<div style="font-size:11px;font-weight:700;color:var(--text2)">TOTAL</div>';
-    months.forEach(function(mk){
-      var paid=clients.reduce(function(sum,c){var p=(c.payments||[]).find(function(x){return x.month===mk&&x.paid;});return sum+(p?p.value:(0));},0);
-      var total=clients.reduce(function(sum,c){return sum+(c.value||0);},0);
-      s+='<div style="text-align:center;font-family:var(--mono);font-size:12px;font-weight:600;color:var(--emerald)">'+fmtMoney(paid)+'<span style="color:var(--text3);font-weight:400"> / '+fmtMoney(total)+'</span></div>';
-    });
-    s+='</div></div></div>';
-    return s;
   }
 
-  out+=paySection('💼 Tráfego Pago',trafClients,'var(--red)');
-  out+=paySection('⚖️ Advocacia',advClients,'var(--s-blue)');
+  function mkRow(c){
+    var row='<div style="display:grid;grid-template-columns:'+gridCols+';gap:0;padding:10px 14px;border-bottom:1px solid var(--bdr);align-items:center;transition:background .15s" '
+      +'onmouseover="this.style.background=\'rgba(255,255,255,.025)\'" onmouseout="this.style.background=\'\'">'
+      +'<div style="font-size:13px;font-weight:500;color:var(--text);cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" '
+      +'onclick="openItem(\''+c.id+'\')">'+escH(c.name)+'</div>';
+    months.forEach(function(mk){
+      var p=(c.payments||[]).find(function(x){return x.month===mk;});
+      var paid=p&&p.paid;
+      var val=p?p.value:(c.value||0);
+      row+='<div style="text-align:center;padding:4px">'
+        +'<div data-cid="'+c.id+'" data-mk="'+mk+'" onclick="togPayDirect(this.dataset.cid,this.dataset.mk)" '
+        +'style="display:inline-flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;'
+        +'padding:5px 8px;border-radius:8px;min-width:80px;'
+        +'background:'+(paid?'rgba(16,185,129,.12)':'rgba(192,40,45,.08)')+';'
+        +'border:1px solid '+(paid?'rgba(16,185,129,.3)':'rgba(192,40,45,.2)')+';">'
+        +'<div style="font-family:var(--mono);font-size:12px;font-weight:600;color:'+(paid?'var(--emerald)':'var(--red)')+'">'+fmtMoney(val)+'</div>'
+        +'<div style="font-size:9px;font-weight:700;letter-spacing:.04em;color:'+(paid?'var(--emerald)':'var(--text3)')+'">'+( paid?'✓ PAGO':'PENDENTE')+'</div>'
+        +'</div></div>';
+    });
+    row+='</div>';
+    return row;
+  }
+
+  function mkFooter(clients){
+    var f='<div style="display:grid;grid-template-columns:'+gridCols+';gap:0;padding:9px 14px;background:var(--bg3);border-top:1px solid var(--bdr)">'
+      +'<div style="font-size:11px;font-weight:700;color:var(--text2)">TOTAL</div>';
+    months.forEach(function(mk){
+      var recebido=clients.reduce(function(s,c){
+        var p=(c.payments||[]).find(function(x){return x.month===mk&&x.paid;});
+        return s+(p?p.value:0);
+      },0);
+      var contratado=clients.reduce(function(s,c){return s+(c.value||0);},0);
+      f+='<div style="text-align:center;font-family:var(--mono);font-size:11px">'
+        +'<span style="color:var(--emerald);font-weight:600">'+fmtMoney(recebido)+'</span>'
+        +'<span style="color:var(--text3)"> / '+fmtMoney(contratado)+'</span>'
+        +'</div>';
+    });
+    f+='</div>';
+    return f;
+  }
+
+  // ── TRÁFEGO ATIVO ──
+  if(trafAtivos.length){
+    out+=mkHeader('💼 Tráfego Pago — Ativos','var(--red)');
+    trafAtivos.forEach(function(c){out+=mkRow(c);});
+    out+=mkFooter(trafAtivos);
+    out+='</div></div>';
+  }
+
+  // ── TRÁFEGO INATIVO ──
+  if(trafInativos.length){
+    out+=mkHeader('📁 Tráfego Pago — Inativos','var(--text3)');
+    trafInativos.forEach(function(c){out+=mkRow(c);});
+    out+=mkFooter(trafInativos);
+    out+='</div></div>';
+  }
+
+  // ── ADVOCACIA ──
+  if(advClients.length){
+    out+=mkHeader('⚖️ Advocacia','var(--s-blue)');
+    advClients.forEach(function(c){out+=mkRow(c);});
+    out+=mkFooter(advClients);
+    out+='</div></div>';
+  }
+
   out+='<div style="height:40px"></div>';
   el.innerHTML=out;
 }
 
-// Toggle payment directly from pagamentos view
+function addClientModal(boardId){
+  var b=D.boards.find(function(x){return x.id===boardId;});if(!b)return;
+  var name=prompt("Nome do cliente:");if(!name)return;
+  var value=parseFloat(prompt("Valor mensal (R$):")||"0")||0;
+  var group=boardId==="cli"?"g-ativo":"gp-ativo";
+  var since=new Date().toISOString().slice(0,10);
+  if(!b.items)b.items=[];
+  b.items.push({id:uid(),group:group,name:name,value:value,status:"ativo",since:since,notes:"",payments:[],comments:[],links:[]});
+  addLog("Cliente adicionado: "+name);
+  save();renderContent();
+}
 function togPayDirect(clientId,month){
   var found=false;
   D.boards.forEach(function(b){
@@ -1785,6 +1909,84 @@ function delLink2(id){
   renderContent();
 }
 
+
+// ══════════════════════════════════════════════
+//  BACKUP & RESTORE
+// ══════════════════════════════════════════════
+function exportBackup(){
+  var desp=localStorage.getItem(DESP_KEY)||'{"items":[]}';
+  var md=localStorage.getItem(MD_KEY)||'{}';
+  var links=localStorage.getItem(LINKS_KEY)||'{"items":[]}';
+  var backup={
+    version:'tm-hub-v1',
+    exportedAt:new Date().toISOString(),
+    dashboard:{boards:D.boards,log:D.log},
+    despesas:JSON.parse(desp),
+    meudia:JSON.parse(md),
+    links:JSON.parse(links)
+  };
+  var json=JSON.stringify(backup,null,2);
+  var blob=new Blob([json],{type:'application/json'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  var date=new Date();
+  var fname='tm-hub-backup-'+date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0')+'.json';
+  a.href=url;a.download=fname;document.body.appendChild(a);a.click();
+  document.body.removeChild(a);URL.revokeObjectURL(url);
+  addLog('Backup exportado: '+fname);
+  // Also save to Supabase as extra safety
+  try{sbSave();}catch(e){}
+  alert('✅ Backup salvo como:\n'+fname+'\n\nGuarde este arquivo em local seguro (Drive, email, pendrive).');
+}
+
+function importBackup(){
+  if(!confirm('⚠️ Importar um backup vai SUBSTITUIR todos os dados atuais.\n\nTem certeza?'))return;
+  document.getElementById('backup-file-input').click();
+}
+
+function handleImport(input){
+  var file=input.files[0];
+  if(!file)return;
+  var reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      var backup=JSON.parse(e.target.result);
+      if(!backup.version||!backup.dashboard){
+        alert('❌ Arquivo inválido. Use um backup gerado pelo TM Hub.');
+        return;
+      }
+      // Restore dashboard
+      if(backup.dashboard&&backup.dashboard.boards){
+        D.boards=backup.dashboard.boards;
+        D.log=backup.dashboard.log||[];
+        save();
+      }
+      // Restore despesas
+      if(backup.despesas){
+        localStorage.setItem(DESP_KEY,JSON.stringify(backup.despesas));
+        try{sbSaveDesp();}catch(ex){}
+      }
+      // Restore meu dia
+      if(backup.meudia){
+        localStorage.setItem(MD_KEY,JSON.stringify(backup.meudia));
+        try{sbSaveMD();}catch(ex){}
+      }
+      // Restore links
+      if(backup.links){
+        localStorage.setItem(LINKS_KEY,JSON.stringify(backup.links));
+      }
+      addLog('Backup restaurado de: '+file.name);
+      renderSidebar();
+      switchBoard('fin');
+      alert('✅ Backup restaurado com sucesso!\n\nTodos os seus dados foram recuperados.');
+    }catch(err){
+      alert('❌ Erro ao ler o arquivo: '+err.message);
+    }
+  };
+  reader.readAsText(file);
+  // Reset input so same file can be selected again
+  input.value='';
+}
 
 function renderCalendarBoard(el){
   var daysInMonth=new Date(calYear,calMonth+1,0).getDate();
