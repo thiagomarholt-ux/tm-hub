@@ -631,16 +631,18 @@ async function sbLoad(){
     if(dbRow&&dbRow.boards&&dbRow.boards.length>0){
       D.boards=dbRow.boards;
       D.log=dbRow.log||[];
-      // Ensure meudia board exists
-      if(!D.boards.find(b=>b.id==='meudia')){
-        const def=BOARDS_DEFAULT.find(b=>b.id==='meudia');
-        if(def)D.boards.splice(1,0,JSON.parse(JSON.stringify(def)));
-      }
-      if(!D.boards.find(b=>b.id==='despesas')){
-        const def=BOARDS_DEFAULT.find(b=>b.id==='despesas');
-        if(def)D.boards.splice(4,0,JSON.parse(JSON.stringify(def)));
-      }
-      save(); // also keep localStorage as cache
+      // Ensure ALL boards from BOARDS_DEFAULT exist (inject missing ones)
+      const allCore=['fin','cli','adv','leads','pagamentos','links','despesas','meudia','agenda'];
+      allCore.forEach(function(cid){
+        if(!D.boards.find(function(b){return b.id===cid;})){
+          const def=BOARDS_DEFAULT.find(function(b){return b.id===cid;});
+          if(def)D.boards.push(JSON.parse(JSON.stringify(def)));
+        }
+      });
+      // Fix adv board type if old
+      const advB=D.boards.find(function(b){return b.id==='adv';});
+      if(advB&&advB.type==='processes')advB.type='advocacia';
+      save();
     }
 
     // Restore despesas
@@ -846,17 +848,17 @@ function loadData(){
       if(parsed.boards){
         // Remove empty non-core boards
         parsed.boards=parsed.boards.filter(b=>allCore.includes(b.id)||(b.items&&b.items.length>0));
-        // Inject any missing core boards (including meudia) WITHOUT clearing data
-        allCore.forEach(cid=>{
-          if(!parsed.boards.find(b=>b.id===cid)){
-            const def=BOARDS_DEFAULT.find(b=>b.id===cid);
-            if(def){
-              // Insert meudia as second board (after fin)
-              if(cid==='meudia') parsed.boards.splice(1,0,JSON.parse(JSON.stringify(def)));
-              else parsed.boards.push(JSON.parse(JSON.stringify(def)));
-            }
+        // Inject any missing core boards WITHOUT clearing data
+        const allCoreBoards=['fin','cli','adv','leads','pagamentos','links','despesas','meudia','agenda'];
+        allCoreBoards.forEach(function(cid){
+          if(!parsed.boards.find(function(b){return b.id===cid;})){
+            const def=BOARDS_DEFAULT.find(function(b){return b.id===cid;});
+            if(def)parsed.boards.push(JSON.parse(JSON.stringify(def)));
           }
         });
+        // Fix adv type if old
+        const advB=parsed.boards.find(function(b){return b.id==='adv';});
+        if(advB&&advB.type==='processes')advB.type='advocacia';
       }
       return parsed;
     }
