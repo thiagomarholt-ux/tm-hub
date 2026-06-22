@@ -1007,6 +1007,7 @@ function renderContent(){
 // ══════════════════════════════════════════════
 function renderDashboard(el){
   const mk=curKey();
+  const prevMo=(()=>{const d=new Date();d.setMonth(d.getMonth()-1);return mkKey(d.getFullYear(),d.getMonth()+1);})();
   const[yr,mo]=mk.split('-');
   const trafBoard=D.boards.find(b=>b.id==='cli');
   const advBoard=D.boards.find(b=>b.id==='adv');
@@ -1085,9 +1086,9 @@ function renderDashboard(el){
       <div class="dc-val yellow">${fmtMoney(aPend)}</div>
     </div>
   </div>
-  <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin:16px 0 10px;display:flex;align-items:center;gap:8px">Clientes pendentes este mês<span style="flex:1;height:1px;background:var(--bdr);display:block"></span></div>
+  <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin:16px 0 10px;display:flex;align-items:center;gap:8px">Clientes pendentes — ${MONTHS_PT[parseInt(prevMo.split('-')[1])-1]}/${prevMo.split('-')[0]}<span style="flex:1;height:1px;background:var(--bdr);display:block"></span></div>
   <div style="background:var(--surface);border:1px solid var(--bdr);border-radius:var(--radius-lg);overflow:hidden">
-    ${trafAtivos.filter(c=>{const p=(c.payments||[]).find(x=>x.month===mk);return!(p&&p.paid);}).map(c=>`
+    ${trafAtivos.filter(c=>{const p=(c.payments||[]).find(x=>x.month===prevMo);return!(p&&p.paid);}).map(c=>`
       <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--bdr);cursor:pointer" onclick="switchBoard('cli')">
         <div style="width:6px;height:6px;border-radius:50%;background:var(--emerald);flex-shrink:0"></div>
         <div style="flex:1;font-size:13px;font-weight:500">${escH(c.name)}</div>
@@ -1237,7 +1238,8 @@ function renderKanbanView(el){
       var totalPaid=(c.payments||[]).filter(function(p){return p.paid;}).reduce(function(s,p){return s+(p.value||c.value||0);},0);
       var meses=(c.payments||[]).length;
 
-      wrap+='<div style="flex-shrink:0;width:200px;background:var(--surface);border:1px solid var(--bdr);border-radius:var(--radius-lg);overflow:hidden;display:flex;flex-direction:column">';
+      var isInativo=c.status==='inativo';
+      wrap+='<div style="flex-shrink:0;width:200px;background:var(--surface);border:1px solid var(--bdr);border-radius:var(--radius-lg);overflow:hidden;display:flex;flex-direction:column'+(isInativo?';opacity:.65':'')+'">';
       // Column header
       wrap+='<div style="padding:10px 12px;border-bottom:1px solid var(--bdr);border-top:3px solid '+statusColor+';cursor:pointer" onclick="openItem(\''+c.id+'\')">'+
         '<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">'+escH(c.name)+'</div>'+
@@ -1247,6 +1249,13 @@ function renderKanbanView(el){
         '</div>';
       // Payment cards
       wrap+='<div style="padding:8px;flex:1;display:flex;flex-direction:column;gap:6px">';
+      if(isInativo){
+        // Inactive: show neutral "Inativo" badge instead of pending payment prompts
+        wrap+='<div style="padding:10px;border-radius:8px;border:1px solid var(--bdr2);background:var(--bg3);text-align:center">'
+          +'<div style="font-size:10px;font-weight:700;letter-spacing:.06em;color:var(--text3)">CLIENTE INATIVO</div>'
+          +'<div style="font-size:10px;color:var(--text3);margin-top:3px">Sem cobrança ativa</div>'
+          +'</div>';
+      } else {
       // Current month card
       wrap+='<div data-cid="'+c.id+'" data-mk="'+curMo+'" onclick="togPayDirect(this.dataset.cid,this.dataset.mk)" '+
         'style="padding:8px 10px;border-radius:8px;cursor:pointer;border:1px solid '+(curPaid?'rgba(16,185,129,.35)':'rgba(192,40,45,.25)')+';'+
@@ -1265,6 +1274,7 @@ function renderKanbanView(el){
           '<span style="font-family:var(--mono);font-size:12px;font-weight:600;color:'+(prevPaid?'var(--emerald)':'var(--red)')+'">'+fmtMoney(prevP?prevP.value:(c.value||0))+'</span>'+
           '<span style="font-size:10px;font-weight:700;color:'+(prevPaid?'var(--emerald)':'var(--text3)')+'">'+( prevPaid?'✓':'PENDENTE')+'</span>'+
         '</div></div>';
+      }
       // Stats footer
       wrap+='<div style="margin-top:4px;padding:6px 4px;border-top:1px solid var(--bdr)">'
         +'<div style="font-size:10px;color:var(--text3)">Total recebido</div>'
@@ -2200,10 +2210,10 @@ function renderItemModal(it,b){
   // payment section
   let paySection='';
   if(isClient||isProcess){
-    const allM=getAllMonths(it.since||'2025-01-01');
+    const allM=(it.payments||[]).map(p=>p.month).sort().reverse();
     paySection=`<div class="mdivider"></div>
       <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:10px">Pagamentos</div>
-      ${allM.length?allM.slice().reverse().map(m=>{
+      ${allM.length?allM.map(m=>{
         const[y,mo]=m.split('-');
         const lbl=MONTHS_S[parseInt(mo)-1]+'/'+y;
         const p=(it.payments||[]).find(x=>x.month===m);
