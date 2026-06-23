@@ -594,9 +594,20 @@ function sbSave(){
   clearTimeout(_sbTimer);
   _sbTimer=setTimeout(async()=>{
     try{
+      const ts=Date.now();
       await sbFetch('dashboard_data','PATCH',{boards:D.boards,log:D.log,updated_at:new Date().toISOString()});
+      localStorage.setItem(SK+'_synced_at',ts+'');
     }catch(e){console.warn('Supabase save error:',e);}
   },1500);
+}
+// Flush imediato (sem esperar debounce) — usado antes de sair da página
+async function sbSaveFlush(){
+  clearTimeout(_sbTimer);
+  try{
+    const ts=Date.now();
+    await sbFetch('dashboard_data','PATCH',{boards:D.boards,log:D.log,updated_at:new Date().toISOString()});
+    localStorage.setItem(SK+'_synced_at',ts+'');
+  }catch(e){console.warn('Supabase flush error:',e);}
 }
 
 let _despTimer=null;
@@ -609,6 +620,14 @@ function sbSaveDesp(){
     }catch(e){console.warn('Supabase desp save error:',e);}
   },1500);
 }
+// Flush imediato (sem esperar debounce) — usado antes de sair da página
+async function sbSaveDespFlush(){
+  clearTimeout(_despTimer);
+  try{
+    var desp=loadDesp();
+    await sbFetch('despesas_data','PATCH',{items:desp.items,updated_at:new Date().toISOString()});
+  }catch(e){console.warn('Supabase desp flush error:',e);}
+}
 
 let _mdTimer=null;
 function sbSaveMD(){
@@ -620,8 +639,29 @@ function sbSaveMD(){
     }catch(e){console.warn('Supabase MD save error:',e);}
   },1500);
 }
+// Flush imediato (sem esperar debounce) — usado antes de sair da página
+async function sbSaveMDFlush(){
+  clearTimeout(_mdTimer);
+  try{
+    var md=getMD();
+    await sbFetch('meudia_data','PATCH',{data:md,updated_at:new Date().toISOString()});
+  }catch(e){console.warn('Supabase MD flush error:',e);}
+}
 
 // Load all data from Supabase on startup
+// Flush forçado de tudo: evita perder dados se a aba for trocada/fechada
+// dentro da janela de debounce de 1.5s antes do save no Supabase acontecer.
+function flushAllToSupabase(){
+  sbSaveFlush();
+  sbSaveMDFlush();
+  sbSaveDespFlush();
+}
+document.addEventListener('visibilitychange',function(){
+  if(document.visibilityState==='hidden')flushAllToSupabase();
+});
+window.addEventListener('beforeunload',flushAllToSupabase);
+window.addEventListener('pagehide',flushAllToSupabase);
+
 async function sbLoad(){
   try{
     // Show loading indicator
@@ -632,8 +672,11 @@ async function sbLoad(){
       sbFetch('meudia_data')
     ]);
 
-    // Restore dashboard data
-    if(dbRow&&dbRow.boards&&dbRow.boards.length>0){
+    // Restore dashboard data — só sobrescreve local se o remoto for mais novo
+    // que o último save confirmado (evita apagar edição recente não sincronizada)
+    const lastSyncedBoards=parseInt(localStorage.getItem(SK+'_synced_at')||'0');
+    const remoteBoardsTs=dbRow&&dbRow.updated_at?new Date(dbRow.updated_at).getTime():0;
+    if(dbRow&&dbRow.boards&&dbRow.boards.length>0&&remoteBoardsTs>=lastSyncedBoards){
       D.boards=dbRow.boards;
       D.log=dbRow.log||[];
       // Ensure ALL boards from BOARDS_DEFAULT exist (inject missing ones)
@@ -647,7 +690,8 @@ async function sbLoad(){
       // Fix adv board type if old
       const advB=D.boards.find(function(b){return b.id==='adv';});
       if(advB&&advB.type==='processes')advB.type='advocacia';
-      save();
+      localStorage.setItem(SK,JSON.stringify(D));
+      localStorage.setItem(SK+'_synced_at',Date.now()+'');
     }
 
     // Restore despesas
@@ -870,7 +914,7 @@ function loadData(){
   }catch(e){console.warn('loadData error:',e);}
   return{boards:JSON.parse(JSON.stringify(BOARDS_DEFAULT)),log:[]};
 }
-function save(){localStorage.setItem(SK,JSON.stringify(D));sbSave();}
+function save(){localStorage.setItem(SK,JSON.stringify(D));localStorage.setItem(SK+'_ts',Date.now()+'');sbSave();}
 function addLog(msg){D.log.unshift({ts:nowISO(),msg});if(D.log.length>100)D.log.pop();document.getElementById('log-dot').style.display='block';document.getElementById('notif-dot').style.display='block';save()}
 function board(){return D.boards.find(b=>b.id===curBoardId)}
 
@@ -1379,7 +1423,7 @@ function loadMD(){
   try{var r=localStorage.getItem(MD_KEY);if(r)return JSON.parse(r);}catch(e){}
   return{date:todayISO(),mits:[{id:uid(),text:'',done:false},{id:uid(),text:'',done:false},{id:uid(),text:'',done:false}],review:{fiz:'',ficou:'',amanha:''}};
 }
-function saveMD(md){localStorage.setItem(MD_KEY,JSON.stringify(md));sbSaveMD();}
+function saveMD(md){localStorage.setItem(MD_KEY,JSON.stringify(md));localStorage.setItem(MD_KEY+'_ts',Date.now()+'');sbSaveMD();}
 function getMD(){
   var md=loadMD();
   // MITs persist — only update date, never reset mits
