@@ -529,9 +529,6 @@ textarea.minput{resize:none}
   <button class="mob-nav-btn" onclick="switchMobBoard('cli',this)">
     <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>Clientes
   </button>
-  <button class="mob-nav-btn" onclick="switchMobBoard('agenda',this)">
-    <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>Agenda
-  </button>
   <button class="mob-nav-btn" onclick="switchMobBoard('proc',this)">
     <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Processos
   </button>
@@ -616,7 +613,8 @@ function sbSaveDesp(){
   _despTimer=setTimeout(async()=>{
     try{
       var desp=loadDesp();
-      await sbFetch('despesas_data','PATCH',{items:desp.items,updated_at:new Date().toISOString()});
+      var gp=loadGP();
+      await sbFetch('despesas_data','PATCH',{items:desp.items,gp_items:gp.items,gp_regras:gp.regras,updated_at:new Date().toISOString()});
     }catch(e){console.warn('Supabase desp save error:',e);}
   },1500);
 }
@@ -625,9 +623,11 @@ async function sbSaveDespFlush(){
   clearTimeout(_despTimer);
   try{
     var desp=loadDesp();
-    await sbFetch('despesas_data','PATCH',{items:desp.items,updated_at:new Date().toISOString()});
+    var gp=loadGP();
+    await sbFetch('despesas_data','PATCH',{items:desp.items,gp_items:gp.items,gp_regras:gp.regras,updated_at:new Date().toISOString()});
   }catch(e){console.warn('Supabase desp flush error:',e);}
 }
+function sbSaveGP(){sbSaveDesp();} // gastos pessoais sincroniza junto com despesas
 
 let _mdTimer=null;
 function sbSaveMD(){
@@ -655,6 +655,7 @@ function flushAllToSupabase(){
   sbSaveFlush();
   sbSaveMDFlush();
   sbSaveDespFlush();
+  sbSaveLinksFlush();
 }
 document.addEventListener('visibilitychange',function(){
   if(document.visibilityState==='hidden')flushAllToSupabase();
@@ -680,7 +681,7 @@ async function sbLoad(){
       D.boards=dbRow.boards;
       D.log=dbRow.log||[];
       // Ensure ALL boards from BOARDS_DEFAULT exist (inject missing ones)
-      const allCore=['fin','cli','adv','leads','pagamentos','links','despesas','meudia','agenda'];
+      const allCore=['fin','cli','adv','leads','pagamentos','links','despesas','meudia'];
       allCore.forEach(function(cid){
         if(!D.boards.find(function(b){return b.id===cid;})){
           const def=BOARDS_DEFAULT.find(function(b){return b.id===cid;});
@@ -697,6 +698,14 @@ async function sbLoad(){
     // Restore despesas
     if(despRow&&despRow.items){
       localStorage.setItem(DESP_KEY,JSON.stringify({items:despRow.items}));
+    }
+    // Restore gastos pessoais (mesmo registro de despesas_data)
+    if(despRow&&(despRow.gp_items||despRow.gp_regras)){
+      localStorage.setItem(GP_KEY,JSON.stringify({items:despRow.gp_items||[],regras:despRow.gp_regras||{}}));
+    }
+    // Restore links (mesmo registro de despesas_data) — só sobrescreve se vier algo do remoto
+    if(despRow&&despRow.links_items&&despRow.links_items.length>0){
+      localStorage.setItem(LINKS_KEY,JSON.stringify({items:despRow.links_items}));
     }
 
     // Restore meu dia
@@ -863,29 +872,11 @@ const BOARDS_DEFAULT=[
     id:'despesas',name:'Despesas',icon:'receipt',type:'despesas',
     items:[]
   },
-  {
-    id:'agenda',name:'Agenda',icon:'calendar',type:'calendar',
-    items:[
-      {id:'t1',text:'Google Ads CANAA',tag:'traf',done:false,date:todayISO()},
-      {id:'t2',text:'Anúncio BETO',tag:'traf',done:false,date:todayISO()},
-      {id:'t3',text:'Apresentação Beto Marcas',tag:'traf',done:false,date:todayISO()},
-      {id:'t4',text:'Relatório Glauci',tag:'traf',done:false,date:todayISO()},
-      {id:'t5',text:'Processo Vítor',tag:'dir',done:false,date:todayISO()},
-      {id:'t6',text:'Processo LT',tag:'dir',done:false,date:todayISO()},
-      {id:'t7',text:'Aposentadoria PAI',tag:'dir',done:false,date:todayISO()},
-      {id:'t8',text:'ASAAS',tag:'pes',done:false,date:todayISO()},
-      {id:'t9',text:'Pitch de vendas',tag:'pes',done:false,date:todayISO()},
-      {id:'t10',text:'Atualizar LinkedIn',tag:'pes',done:false,date:todayISO()},
-    ]
-  },
 ];
 
 let D=loadData();
 let curBoardId='fin';
 let curView='tabela';
-let selDate=todayISO();
-let calYear=new Date().getFullYear();
-let calMonth=new Date().getMonth();
 let chartInstances={};
 
 function loadData(){
@@ -893,12 +884,12 @@ function loadData(){
     const r=localStorage.getItem(SK);
     if(r){
       const parsed=JSON.parse(r);
-      const allCore=['fin','cli','adv','leads','agenda','meudia','despesas','pagamentos','links'];
+      const allCore=['fin','cli','adv','leads','meudia','despesas','pagamentos','links'];
       if(parsed.boards){
         // Remove empty non-core boards
         parsed.boards=parsed.boards.filter(b=>allCore.includes(b.id)||(b.items&&b.items.length>0));
         // Inject any missing core boards WITHOUT clearing data
-        const allCoreBoards=['fin','cli','adv','leads','pagamentos','links','despesas','meudia','agenda'];
+        const allCoreBoards=['fin','cli','adv','leads','pagamentos','links','despesas','meudia'];
         allCoreBoards.forEach(function(cid){
           if(!parsed.boards.find(function(b){return b.id===cid;})){
             const def=BOARDS_DEFAULT.find(function(b){return b.id===cid;});
@@ -950,7 +941,7 @@ function resetDashboard(){
 }
 function renderSidebar(){
   const el=document.getElementById('boards-list');
-  const BOARD_DESCS={fin:'Receita e pagamentos',cli:'Gestão de clientes',adv:'Processos e prazos',leads:'Funil de prospecção',agenda:'Tarefas e calendário',pagamentos:'Visão de pagamentos',links:'Links e recursos',despesas:'Controle de despesas',meudia:'Foco do dia'};
+  const BOARD_DESCS={fin:'Receita e pagamentos',cli:'Gestão de clientes',adv:'Processos e prazos',leads:'Funil de prospecção',pagamentos:'Visão de pagamentos',links:'Links e recursos',despesas:'Controle de despesas',meudia:'Foco do dia'};
   el.innerHTML=D.boards.map(b=>`
     <div class="board-item${b.id===curBoardId?' active':''}" onclick="switchBoard('${b.id}')">
       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" style="flex-shrink:0">${BOARD_ICONS[b.icon]||BOARD_ICONS.grid}</svg>
@@ -1039,7 +1030,6 @@ function renderContent(){
   if(b.type==='despesas'){el.innerHTML='';renderDespesas(el);return}
   if(b.type==='pagamentos'){el.innerHTML='';renderPagamentos(el);return}
   if(b.type==='links'){el.innerHTML='';renderLinks(el);return}
-  if(b.type==='calendar'){el.innerHTML='';renderCalendarBoard(el);return}
 
   if(curView==='tabela') renderTableView(el);
   else if(curView==='kanban') renderKanbanView(el);
@@ -1446,24 +1436,6 @@ function renderMeuDia(el){
     +'<div id="md-clock" style="font-size:11px;color:var(--text3);font-family:var(--mono);background:var(--bg3);border:1px solid var(--bdr);border-radius:8px;padding:5px 12px">--:--</div>'
     +'</div>';
 
-  // Alerts
-  var alerts=getUpcomingAlerts();
-  if(alerts.length){
-    out+='<div class="md-section"><div class="md-section-title">🚨 Alertas de prazo — próximos 7 dias</div>';
-    var tagColors={traf:'var(--red)',dir:'var(--s-blue)',pes:'var(--s-yellow)'};
-    for(var ai=0;ai<alerts.length;ai++){
-      var a=alerts[ai];
-      var diffLabel=a.diff===0?'Hoje!':a.diff===1?'Amanhã':a.diff+' dias';
-      out+='<div class="alert-card'+(a.urgent?'':' warn')+'">'
-        +'<div class="alert-dot'+(a.urgent?' urgent':' warn')+'"></div>'
-        +'<div style="width:3px;height:20px;border-radius:99px;background:'+(tagColors[a.tag]||'var(--text3)')+';flex-shrink:0"></div>'
-        +'<div class="alert-text">'+escH(a.text)+'</div>'
-        +'<div class="alert-date" style="color:'+(a.urgent?'var(--red)':'var(--s-yellow)')+'">'+diffLabel+'</div>'
-        +'</div>';
-    }
-    out+='</div>';
-  }
-
   // MITs
   out+='<div class="md-section"><div class="md-section-title">📌 Anotações rápidas do dia</div>';
   for(var mi=0;mi<3;mi++){
@@ -1571,32 +1543,6 @@ function toggleMDTask(id){
 function saveMIT(idx,val){var md=getMD();if(!md.mits[idx])md.mits[idx]={id:uid(),text:'',done:false};md.mits[idx].text=val;saveMD(md);}
 function toggleMIT(id){var md=getMD();var m=md.mits.find(function(x){return x.id===id;});if(m)m.done=!m.done;saveMD(md);renderContent();}
 function saveReview(key,val){var md=getMD();if(key==='_save'){addLog('Revisão salva');alert('Salvo!');}else{if(!md.review)md.review={};md.review[key]=val;}saveMD(md);}
-function toggleCalTaskMD(taskId){
-  var agendaB=D.boards.find(function(b){return b.id==='agenda';});if(!agendaB)return;
-  var t=(agendaB.items||[]).find(function(x){return x.id===taskId;});if(!t)return;
-  t.done=!t.done;addLog((t.done?'Concluída':'Reaberta')+': '+t.text);save();renderContent();
-}
-
-// ══════════════════════════════════════════════
-//  ALERT HELPERS (used by Meu Dia)
-// ══════════════════════════════════════════════
-function getUpcomingAlerts(){
-  var agendaB=D.boards.find(function(b){return b.id==='agenda';});
-  if(!agendaB)return[];
-  var today=new Date();today.setHours(0,0,0,0);
-  var alerts=[];
-  (agendaB.items||[]).forEach(function(t){
-    if(t.done)return;
-    var d=new Date(t.date+'T00:00:00');
-    var diff=Math.ceil((d-today)/86400000);
-    if(diff>=0&&diff<=7){
-      alerts.push({id:t.id,text:t.text,date:t.date,diff:diff,tag:t.tag,
-        urgent:diff<=2});
-    }
-  });
-  alerts.sort(function(a,b){return a.diff-b.diff;});
-  return alerts;
-}
 
 // ══════════════════════════════════════════════
 //  DESPESAS
@@ -1612,6 +1558,77 @@ function loadDesp(){
   ]};
 }
 function saveDesp(d){localStorage.setItem(DESP_KEY,JSON.stringify(d));try{sbSaveDesp();}catch(e){}}
+
+// ══════════════════════════════════════════════
+//  GASTOS PESSOAIS (PF) — importação de extrato
+// ══════════════════════════════════════════════
+var GP_KEY='tm_gastos_pessoais_v1';
+var GP_CATS=['Combustível','Bares & Lazer','Mercado','Saúde','Restaurante/Lanche','Pix Diversos','Tarifas & Encargos','Transferências','A Categorizar'];
+var GP_CAT_COLORS={
+  'Combustível':'#f59e0b','Bares & Lazer':'#a855f7','Mercado':'#10b981','Saúde':'#06b6d4',
+  'Restaurante/Lanche':'#ec4899','Pix Diversos':'#6366f1','Tarifas & Encargos':'#64748b',
+  'Transferências':'#3b82f6','A Categorizar':'#c0282d'
+};
+
+function loadGP(){
+  try{var r=localStorage.getItem(GP_KEY);if(r)return JSON.parse(r);}catch(e){}
+  return{items:[],regras:{}}; // items: transações; regras: {palavraChave:categoria} aprendidas
+}
+function saveGP(d){localStorage.setItem(GP_KEY,JSON.stringify(d));try{sbSaveGP();}catch(e){}}
+
+// Motor de regras: tenta categorizar pelo nome do estabelecimento/descrição
+function categorizeGP(desc,regrasAprendidas){
+  var d=(desc||'').toUpperCase();
+  // 1. Regras aprendidas pelo usuário têm prioridade
+  for(var chave in regrasAprendidas){
+    if(d.indexOf(chave.toUpperCase())!==-1)return regrasAprendidas[chave];
+  }
+  // 2. Regras padrão por palavra-chave
+  var rules=[
+    [['POSTO','COMBUSTIVEL','IPIRANGA','SHELL','ATLANTIC'],'Combustível'],
+    [['BAR','PUB','HOOKAH','TABACARIA','CHOPP','ARENA','EVENTOS','REPLAY','BEER','BOTECO','CONTAINER'],'Bares & Lazer'],
+    [['SUPERMERCADO','MERCADO','SUPERM'],'Mercado'],
+    [['FARMACIA','DROGARIA'],'Saúde'],
+    [['RESTAURANTE','LANCHE','PIZZA','GULA','PAO ','SORVETERIA','KONE'],'Restaurante/Lanche'],
+    [['IOF','JUROS','TARIFA','PACOTE SERV','SEGURO PRESTAMISTA','ANUIDADE'],'Tarifas & Encargos'],
+    [['TRANSF. PIX','TRANSF.RECEB','TED'],'Transferências']
+  ];
+  for(var i=0;i<rules.length;i++){
+    var palavras=rules[i][0],cat=rules[i][1];
+    for(var j=0;j<palavras.length;j++){
+      if(d.indexOf(palavras[j])!==-1)return cat;
+    }
+  }
+  // 3. Pix só com CPF/CNPJ (sem nome de estabelecimento reconhecível) → revisão manual
+  if(d.indexOf('PIX')!==-1)return 'A Categorizar';
+  return 'A Categorizar';
+}
+
+// Recebe array de transações no formato [{data:'DD/MM',valor:Number,desc:'...'}]
+// Retorna com categoria sugerida, pronto para tela de revisão
+function prepararImportacaoGP(transacoes){
+  var gp=loadGP();
+  return transacoes.map(function(t){
+    return{
+      id:uid(),data:t.data,valor:t.valor,desc:t.desc,
+      cat:categorizeGP(t.desc,gp.regras||{})
+    };
+  });
+}
+
+// Confirma a importação: salva itens + aprende novas regras de correção manual
+function confirmarImportacaoGP(itensRevisados){
+  var gp=loadGP();
+  var anoRef=parseInt((_gpMesAtual||curKey()).split('-')[0]);
+  itensRevisados.forEach(function(it){
+    // Mês da transação vem da própria data (DD/MM), não do mês selecionado na tela
+    var partesData=(it.data||'').split('/');
+    var mesTransacao=partesData.length===2?mkKey(anoRef,parseInt(partesData[1])):curKey();
+    gp.items.push({id:it.id,data:it.data,valor:it.valor,desc:it.desc,cat:it.cat,mes:mesTransacao});
+  });
+  saveGP(gp);
+  addLog('Importação: '+itensRevisados.length+' gastos pessoais adicionados');
+}
 
 function renderDespesas(el){
   var desp=loadDesp();
@@ -1679,8 +1696,110 @@ function renderDespesas(el){
     out+='</div>';
   });
 
+  out+=renderGastosPessoaisSection();
+
   out+='<div style="height:40px"></div>';
   el.innerHTML=out;
+}
+
+// Renderiza a seção "Gastos Pessoais" — resumo por categoria + lista + importação
+var _gpMesAtual=null; // null = usa o mês corrente na primeira vez; depois guarda a navegação do usuário
+function gpMudarMes(delta){
+  var mk=_gpMesAtual||curKey();
+  var parts=mk.split('-');
+  var d=new Date(parseInt(parts[0]),parseInt(parts[1])-1+delta,1);
+  _gpMesAtual=mkKey(d.getFullYear(),d.getMonth()+1);
+  renderContent();
+}
+function renderGastosPessoaisSection(){
+  var gp=loadGP();
+  var mk=_gpMesAtual||curKey();
+  var itemsMes=(gp.items||[]).filter(function(it){return it.mes===mk;});
+  var totalMes=itemsMes.reduce(function(s,x){return s+(parseFloat(x.valor)||0);},0);
+
+  var porCat={};
+  GP_CATS.forEach(function(c){porCat[c]=0;});
+  itemsMes.forEach(function(it){porCat[it.cat]=(porCat[it.cat]||0)+(parseFloat(it.valor)||0);});
+
+  var out='<div style="margin-top:24px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
+  out+='<div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3)">Gastos Pessoais (PF)</div>';
+  out+='<div style="display:flex;align-items:center;gap:10px">';
+  out+='<button onclick="gpMudarMes(-1)" style="background:var(--surface2);border:1px solid rgba(255,255,255,.08);color:var(--text);border-radius:6px;width:26px;height:26px;cursor:pointer;font-size:13px">&#8249;</button>';
+  out+='<span style="font-size:12px;font-weight:600;color:var(--text);min-width:110px;text-align:center">'+MONTHS_PT[parseInt(mk.split('-')[1])-1]+' '+mk.split('-')[0]+'</span>';
+  out+='<button onclick="gpMudarMes(1)" style="background:var(--surface2);border:1px solid rgba(255,255,255,.08);color:var(--text);border-radius:6px;width:26px;height:26px;cursor:pointer;font-size:13px">&#8250;</button>';
+  out+='</div></div>';
+
+  out+='<div class="board-table-wrap" style="margin-bottom:14px"><div style="padding:14px 16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">';
+  out+='<div><div class="dc-label">Total do mês</div><div class="dc-val" style="color:var(--red);font-size:22px">'+fmtMoney(totalMes)+'</div></div>';
+  out+='<div style="display:flex;gap:8px">';
+  if(itemsMes.length)out+='<button class="add-btn" style="padding:10px 14px;background:transparent;border:1px solid rgba(255,255,255,.12);color:var(--text2)" onclick="limparMesGP(\''+mk+'\')">Limpar mês</button>';
+  out+='<button class="add-btn" style="padding:10px 18px" onclick="abrirModalImportarGP()">+ Importar extrato</button>';
+  out+='</div>';
+  out+='</div></div>';
+
+  // Cards por categoria
+  out+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:14px">';
+  GP_CATS.forEach(function(cat){
+    var v=porCat[cat]||0;
+    if(v<=0)return;
+    out+='<div class="dash-card" style="border-color:'+GP_CAT_COLORS[cat]+'33;padding:10px 12px">';
+    out+='<div class="dc-label" style="font-size:10px">'+cat+'</div>';
+    out+='<div class="dc-val" style="font-size:15px;color:'+GP_CAT_COLORS[cat]+'">'+fmtMoney(v)+'</div>';
+    out+='</div>';
+  });
+  out+='</div>';
+
+  // Lista de transações do mês
+  if(itemsMes.length){
+    out+='<div class="board-table-wrap">';
+    itemsMes.sort(function(a,b){return (a.data||'').localeCompare(b.data);}).forEach(function(it){
+      out+='<div class="desp-row">';
+      out+='<span style="font-family:var(--mono);font-size:11px;color:var(--text3);width:38px;flex-shrink:0">'+escH(it.data)+'</span>';
+      out+='<span style="flex:1;font-size:13px;color:var(--text)">'+escH(it.desc)+'</span>';
+      out+='<select data-gpid="'+it.id+'" onchange="updGPCat(this.dataset.gpid,this.value)" style="background:'+GP_CAT_COLORS[it.cat]+'1a;color:'+GP_CAT_COLORS[it.cat]+';border:1px solid '+GP_CAT_COLORS[it.cat]+'44;border-radius:6px;font-size:11px;padding:3px 6px">';
+      GP_CATS.forEach(function(c){out+='<option value="'+c+'"'+(c===it.cat?' selected':'')+'>'+c+'</option>';});
+      out+='</select>';
+      out+='<span style="font-family:var(--mono);font-size:13px;color:var(--red);width:80px;text-align:right">'+fmtMoney(it.valor)+'</span>';
+      out+='<button class="desp-del" data-gpid2="'+it.id+'" onclick="delGP(this.dataset.gpid2)">&#215;</button>';
+      out+='</div>';
+    });
+    out+='</div>';
+  }else{
+    out+='<div style="text-align:center;padding:24px;color:var(--text3);font-size:13px">Nenhum gasto pessoal importado este mês ainda.</div>';
+  }
+  out+='</div>';
+  return out;
+}
+
+function updGPCat(id,novaCat){
+  var gp=loadGP();
+  var it=gp.items.find(function(x){return x.id===id;});
+  if(it){
+    // Aprende a regra: trecho da descrição → categoria escolhida manualmente
+    if(it.cat==='A Categorizar'&&novaCat!=='A Categorizar'){
+      var chave=(it.desc||'').split(' ').slice(0,2).join(' ');
+      if(chave)gp.regras[chave]=novaCat;
+    }
+    it.cat=novaCat;
+    saveGP(gp);
+    renderContent();
+  }
+}
+function delGP(id){
+  var gp=loadGP();
+  gp.items=gp.items.filter(function(x){return x.id!==id;});
+  saveGP(gp);
+  addLog('Gasto pessoal removido');
+  renderContent();
+}
+function limparMesGP(mk){
+  var gp=loadGP();
+  var qtd=gp.items.filter(function(x){return x.mes===mk;}).length;
+  if(!confirm('Remover todos os '+qtd+' gastos pessoais de '+MONTHS_PT[parseInt(mk.split('-')[1])-1]+'? Esta ação não pode ser desfeita.'))return;
+  gp.items=gp.items.filter(function(x){return x.mes!==mk;});
+  saveGP(gp);
+  addLog('Gastos pessoais de '+mk+' removidos em lote');
+  renderContent();
 }
 
 function addDesp(){
@@ -1872,7 +1991,25 @@ function loadLinks(){
   try{var r=localStorage.getItem(LINKS_KEY);if(r)return JSON.parse(r);}catch(e){}
   return{items:[]};
 }
-function saveLinks(d){localStorage.setItem(LINKS_KEY,JSON.stringify(d));}
+function saveLinks(d){localStorage.setItem(LINKS_KEY,JSON.stringify(d));try{sbSaveLinks();}catch(e){}}
+
+let _linksTimer=null;
+function sbSaveLinks(){
+  clearTimeout(_linksTimer);
+  _linksTimer=setTimeout(async()=>{
+    try{
+      var links=loadLinks();
+      await sbFetch('despesas_data','PATCH',{links_items:links.items,updated_at:new Date().toISOString()});
+    }catch(e){console.warn('Supabase links save error:',e);}
+  },1500);
+}
+async function sbSaveLinksFlush(){
+  clearTimeout(_linksTimer);
+  try{
+    var links=loadLinks();
+    await sbFetch('despesas_data','PATCH',{links_items:links.items,updated_at:new Date().toISOString()});
+  }catch(e){console.warn('Supabase links flush error:',e);}
+}
 
 function renderLinks(el){
   var data=loadLinks();
@@ -2041,162 +2178,6 @@ function handleImport(input){
   // Reset input so same file can be selected again
   input.value='';
 }
-
-function renderCalendarBoard(el){
-  var daysInMonth=new Date(calYear,calMonth+1,0).getDate();
-  var firstDay=new Date(calYear,calMonth,1).getDay();
-  var todayStr=todayISO();
-  var b=board();
-  var DOW=['DOM','SEG','TER','QUA','QUI','SEX','SAB'];
-
-  var cells=[];
-  for(var i=0;i<firstDay;i++)cells.push(0);
-  for(var d=1;d<=daysInMonth;d++)cells.push(d);
-  while(cells.length%7!==0)cells.push(0);
-
-  var thHTML='<tr>';
-  for(var w=0;w<7;w++)thHTML+='<th>'+DOW[w]+'</th>';
-  thHTML+='</tr>';
-
-  var tbHTML='';
-  for(var r=0;r<cells.length/7;r++){
-    tbHTML+='<tr>';
-    for(var c=0;c<7;c++){
-      var day=cells[r*7+c];
-      if(!day){tbHTML+='<td class="empty"></td>';continue;}
-      var mo=String(calMonth+1).padStart(2,'0');
-      var dy=String(day).padStart(2,'0');
-      var iso=calYear+'-'+mo+'-'+dy;
-      var cls='';
-      if(iso===selDate)cls='cal-selected';
-      else if(iso===todayStr)cls='cal-today';
-      if((b.items||[]).some(function(t){return t.date===iso;}))cls+=' cal-has-task';
-      tbHTML+='<td class="'+cls.trim()+'" data-iso="'+iso+'"><span class="cal-num">'+day+'</span></td>';
-    }
-    tbHTML+='</tr>';
-  }
-
-  var calHTML='<div class="cal-wrap">'
-    +'<div class="cal-nav">'
-    +'<button class="cal-nav-btn" id="cal-prev">&#8249;</button>'
-    +'<div class="cal-title">'+MONTHS_PT[calMonth]+' '+calYear+'</div>'
-    +'<button class="cal-nav-btn" id="cal-next">&#8250;</button>'
-    +'</div>'
-    +'<table class="cal-table" id="cal-table-main"><thead>'+thHTML+'</thead><tbody>'+tbHTML+'</tbody></table>'
-    +'</div>';
-
-  var selD=new Date(selDate+'T12:00:00');
-  var dayLabel=DAYS_S[selD.getDay()]+', '+selD.getDate()+' de '+MONTHS_PT[selD.getMonth()];
-  var dayTasks=(b.items||[]).filter(function(t){return t.date===selDate;});
-
-  var taskHTML='<div style="font-size:13px;font-weight:600;margin-bottom:10px">'+escH(dayLabel)+'</div>'
-    +'<div class="add-bar">'
-    +'<input class="add-inp" id="new-task-inp" placeholder="Nova tarefa...">'
-    +'<select class="add-inp" style="max-width:110px;font-size:12px" id="new-task-tag">'
-    +'<option value="traf">Trafego</option>'
-    +'<option value="dir">Direito</option>'
-    +'<option value="pes">Pessoal</option>'
-    +'</select>'
-    +'<select class="add-inp" id="new-task-urgency" style="max-width:100px;font-size:12px">'
-    +'<option value="0">Normal</option>'
-    +'<option value="1">&#128680; Prazo</option>'
-    +'</select>'
-    +'<button class="add-btn" id="cal-add-btn">+</button>'
-    +'</div>';
-
-  if(dayTasks.length){
-    taskHTML+='<div style="background:var(--surface);border:1px solid var(--bdr);border-radius:var(--radius-lg);padding:2px 14px">';
-    for(var ti=0;ti<dayTasks.length;ti++){
-      var t=dayTasks[ti];
-      var tagLabel=t.tag==='traf'?'Trafego':t.tag==='dir'?'Direito':'Pessoal';
-      taskHTML+='<div class="task-item">'
-        +'<div class="task-cb'+(t.done?' done':'')+'" data-taskid="'+t.id+'" data-action="toggle">'+(t.done?'&#10003;':'')+'</div>'
-        +'<div class="task-body">'
-        +'<div class="task-text'+(t.done?' done':'')+'">'+escH(t.text||'')+'</div>'
-        +'<span class="task-tag '+t.tag+'">'+tagLabel+'</span>'
-        +'</div>'
-        +'<button class="task-del" data-taskid="'+t.id+'" data-action="delete">&#215;</button>'
-        +'</div>';
-    }
-    taskHTML+='</div>';
-  } else {
-    taskHTML+='<div class="empty" style="padding:20px"><div class="empty-icon">&#10003;</div>Nenhuma tarefa neste dia</div>';
-  }
-
-  el.innerHTML=calHTML+taskHTML;
-
-  // Attach events after render (no inline onclick needed)
-  var calTable=document.getElementById('cal-table-main');
-  if(calTable)calTable.addEventListener('click',function(e){
-    var td=e.target.closest('td[data-iso]');
-    if(td)selDay(td.getAttribute('data-iso'));
-  });
-  var prevBtn=document.getElementById('cal-prev');
-  if(prevBtn)prevBtn.onclick=function(){calShift(-1);};
-  var nextBtn=document.getElementById('cal-next');
-  if(nextBtn)nextBtn.onclick=function(){calShift(1);};
-  var addBtn=document.getElementById('cal-add-btn');
-  if(addBtn)addBtn.onclick=addCalTask;
-  el.addEventListener('click',function(e){
-    var cb=e.target.closest('[data-action="toggle"]');
-    if(cb)toggleCalTask(cb.getAttribute('data-taskid'));
-    var del=e.target.closest('[data-action="delete"]');
-    if(del)delCalTask(del.getAttribute('data-taskid'));
-    var edt=e.target.closest('[data-action="edit"]');
-    if(edt)editCalTask(edt.getAttribute('data-taskid'));
-  });
-}
-
-function calShift(d){calMonth+=d;if(calMonth>11){calMonth=0;calYear++;}if(calMonth<0){calMonth=11;calYear--;}renderContent();}
-function selDay(iso){selDate=iso;renderContent();}
-function addCalTask(){
-  const b=board();const text=document.getElementById('new-task-inp')?.value.trim();if(!text)return;
-  const tag=document.getElementById('new-task-tag')?.value||'traf';
-  if(!b.items)b.items=[];
-  b.items.push({id:uid(),text,tag,done:false,date:selDate});
-  addLog('Tarefa: '+text+' ('+selDate+')');renderContent();
-}
-function toggleCalTask(id){const b=board();const t=(b.items||[]).find(x=>x.id===id);if(!t)return;t.done=!t.done;addLog((t.done?'Concluída':'Reaberta')+': '+t.text);save();renderContent();}
-function editCalTask(taskId){
-  var agendaB=D.boards.find(function(b){return b.id==='agenda';});if(!agendaB)return;
-  var t=(agendaB.items||[]).find(function(x){return x.id===taskId;});if(!t)return;
-  var body=document.getElementById('modal-add-body');
-  body.innerHTML='<div class="modal-title">Editar tarefa</div>'
-    +'<div class="mfield"><label>Tarefa</label><input class="minput" id="ect-text" value="'+escH(t.text||'')+'"></div>'
-    +'<div class="mrow">'
-    +'<div class="mfield"><label>Data</label><input class="minput" type="date" id="ect-date" value="'+(t.date||'')+'"></div>'
-    +'<div class="mfield"><label>Categoria</label><select class="minput" id="ect-tag">'
-    +'<option value="traf"'+(t.tag==='traf'?' selected':'')+'>Tráfego</option>'
-    +'<option value="dir"'+(t.tag==='dir'?' selected':'')+'>Direito</option>'
-    +'<option value="pes"'+(t.tag==='pes'?' selected':'')+'>Pessoal</option>'
-    +'</select></div></div>'
-    +'<div class="mfield"><label>Tipo</label><select class="minput" id="ect-urgency">'
-    +'<option value="0"'+(!t.prazo?' selected':'')+'>Normal</option>'
-    +'<option value="1"'+(t.prazo?' selected':'')+'>🚨 Prazo</option>'
-    +'</select></div>'
-    +'<div class="mfield"><label>Notas</label><textarea class="minput" id="ect-notes" rows="2">'+escH(t.notes||'')+'</textarea></div>'
-    +'<div class="mbtn-row">'
-    +'<button class="mbtn secondary" onclick="closeModal(&apos;modal-add&apos;)">Cancelar</button>'
-    +'<button class="mbtn danger" onclick="deleteCalTask(&quot;'+taskId+'&quot;)" style="flex:0;padding:11px 16px">Excluir</button>'
-    +'<button class="mbtn primary" onclick="saveCalTask(&quot;'+taskId+'&quot;)">Salvar</button>'
-    +'</div>';
-  openModal('modal-add');
-}
-function saveCalTask(id){
-  var agendaB=D.boards.find(function(b){return b.id==='agenda';});if(!agendaB)return;
-  var t=(agendaB.items||[]).find(function(x){return x.id===id;});if(!t)return;
-  t.text=document.getElementById('ect-text').value.trim()||t.text;
-  t.date=document.getElementById('ect-date').value||t.date;
-  t.tag=document.getElementById('ect-tag').value;
-  t.prazo=document.getElementById('ect-urgency').value==='1';
-  t.notes=document.getElementById('ect-notes').value;
-  addLog('Tarefa editada: '+t.text);
-  save();closeModal('modal-add');renderContent();
-}
-function deleteCalTask(id){
-  // removed - handled by editCalTask
-}
-function delCalTask(id){const b=board();const t=(b.items||[]).find(x=>x.id===id);if(t)addLog('Tarefa removida: '+t.text);b.items=(b.items||[]).filter(x=>x.id!==id);save();renderContent();}
 
 // ══════════════════════════════════════════════
 //  ITEM MODAL (open card)
@@ -2415,7 +2396,6 @@ document.addEventListener('click',()=>{document.getElementById('status-drop').st
 // ══════════════════════════════════════════════
 function openAddItem(){
   const b=board();
-  if(b.type==='calendar'){addCalTask();return;}
   const body=document.getElementById('modal-add-body');
   const groups=b.groups||[];
   body.innerHTML=`
@@ -2453,6 +2433,72 @@ function saveNewItem(){
   b.items.push(newIt);
   addLog('Novo item: '+name+' em '+b.name);
   closeModal('modal-add');save();renderContent();
+}
+
+// ══════════════════════════════════════════════
+//  IMPORTAÇÃO DE EXTRATO (Gastos Pessoais)
+// ══════════════════════════════════════════════
+var _gpImportBuffer=[]; // transações em revisão antes de confirmar
+
+function abrirModalImportarGP(){
+  const body=document.getElementById('modal-add-body');
+  body.innerHTML=`
+    <h3 style="margin:0 0 4px;font-size:16px">Importar extrato</h3>
+    <p style="font-size:12px;color:var(--text3);margin:0 0 12px">Cole abaixo o JSON que o Claude gerou a partir do seu PDF de extrato.</p>
+    <textarea id="gp-json-input" placeholder='[{"data":"01/06","valor":50.00,"desc":"Posto Atlantic"}, ...]' style="width:100%;min-height:140px;background:#1c1c1e;border:1px solid rgba(255,255,255,.08);border-radius:10px;color:var(--text);font-family:var(--mono);font-size:12px;padding:10px;resize:vertical"></textarea>
+    <div class="mbtn-row" style="margin-top:14px">
+      <button class="mbtn secondary" onclick="closeModal('modal-add')">Cancelar</button>
+      <button class="mbtn primary" onclick="processarJSONImportGP()">Analisar</button>
+    </div>`;
+  openModal('modal-add');
+}
+
+function processarJSONImportGP(){
+  const raw=document.getElementById('gp-json-input')?.value.trim();
+  if(!raw)return alert('Cole o JSON do extrato primeiro.');
+  var transacoes;
+  try{transacoes=JSON.parse(raw);}catch(e){return alert('JSON inválido. Verifique o formato e tente novamente.');}
+  if(!Array.isArray(transacoes)||!transacoes.length)return alert('Nenhuma transação encontrada no JSON.');
+  _gpImportBuffer=prepararImportacaoGP(transacoes);
+  renderRevisaoImportGP();
+}
+
+function renderRevisaoImportGP(){
+  const body=document.getElementById('modal-add-body');
+  var total=_gpImportBuffer.reduce(function(s,x){return s+(parseFloat(x.valor)||0);},0);
+  var rows=_gpImportBuffer.map(function(it,idx){
+    var color=GP_CAT_COLORS[it.cat]||'#888';
+    return '<div class="desp-row" style="padding:6px 4px">'+
+      '<span style="font-family:var(--mono);font-size:11px;color:var(--text3);width:36px;flex-shrink:0">'+escH(it.data)+'</span>'+
+      '<span style="flex:1;font-size:12px;color:var(--text)">'+escH(it.desc)+'</span>'+
+      '<select data-idx="'+idx+'" onchange="ajustarCategoriaBuffer(this.dataset.idx,this.value)" style="background:'+color+'1a;color:'+color+';border:1px solid '+color+'44;border-radius:6px;font-size:10px;padding:2px 5px">'+
+      GP_CATS.map(function(c){return '<option value="'+c+'"'+(c===it.cat?' selected':'')+'>'+c+'</option>';}).join('')+
+      '</select>'+
+      '<span style="font-family:var(--mono);font-size:12px;color:var(--red);width:70px;text-align:right">'+fmtMoney(it.valor)+'</span>'+
+      '</div>';
+  }).join('');
+
+  var qtdRevisao=_gpImportBuffer.filter(function(x){return x.cat==='A Categorizar';}).length;
+
+  body.innerHTML=`
+    <h3 style="margin:0 0 4px;font-size:16px">Revisar importação</h3>
+    <p style="font-size:12px;color:var(--text3);margin:0 0 10px">${_gpImportBuffer.length} transações · ${fmtMoney(total)} total${qtdRevisao?' · <span style="color:var(--red)">'+qtdRevisao+' para revisar</span>':''}</p>
+    <div style="max-height:340px;overflow-y:auto;border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:4px 8px">${rows}</div>
+    <div class="mbtn-row" style="margin-top:14px">
+      <button class="mbtn secondary" onclick="closeModal('modal-add')">Cancelar</button>
+      <button class="mbtn primary" onclick="confirmarImportGPFinal()">Confirmar e importar</button>
+    </div>`;
+}
+
+function ajustarCategoriaBuffer(idx,novaCat){
+  _gpImportBuffer[parseInt(idx)].cat=novaCat;
+}
+
+function confirmarImportGPFinal(){
+  confirmarImportacaoGP(_gpImportBuffer);
+  _gpImportBuffer=[];
+  closeModal('modal-add');
+  renderContent();
 }
 
 function quickAddItem(gid){
@@ -2557,7 +2603,7 @@ function saveBoardSettings(){
   closeModal('modal-board');save();renderSidebar();document.getElementById('board-title').textContent=b.name;
 }
 function deleteBoard(id){
-  const core=['fin','cli','adv','leads','agenda'];
+  const core=['fin','cli','adv','leads'];
   if(core.includes(id))return alert('Quadros principais não podem ser excluídos.');
   if(!confirm('Excluir este quadro?'))return;
   D.boards=D.boards.filter(b=>b.id!==id);
@@ -2733,7 +2779,7 @@ function hardReset(){
     const r=localStorage.getItem(SK);
     if(!r){return;} // no data = use defaults, fine
     const parsed=JSON.parse(r);
-    const core=['fin','cli','adv','leads','agenda'];
+    const core=['fin','cli','adv','leads'];
     const hasCore=core.every(id=>(parsed.boards||[]).find(b=>b.id===id));
     if(!hasCore||!parsed.boards||parsed.boards.length===0){
       document.getElementById('reset-helper').style.display='block';
