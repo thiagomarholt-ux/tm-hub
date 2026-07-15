@@ -953,7 +953,8 @@ function renderSidebar(){
 }
 
 function switchBoard(id){
-  curBoardId=id;curView='tabela';
+  var kanbanDefault=['cli','adv','leads'];
+  curBoardId=id;curView=kanbanDefault.indexOf(id)!==-1?'kanban':'tabela';
   renderSidebar();
   document.getElementById('board-title').textContent=board().name;
   // reset view tabs
@@ -1290,24 +1291,32 @@ function renderKanbanView(el){
           +'<div style="font-size:10px;color:var(--text3);margin-top:3px">Sem cobrança ativa</div>'
           +'</div>';
       } else {
-      // Current month card
-      wrap+='<div data-cid="'+c.id+'" data-mk="'+curMo+'" onclick="togPayDirect(this.dataset.cid,this.dataset.mk)" '+
-        'style="padding:8px 10px;border-radius:8px;cursor:pointer;border:1px solid '+(curPaid?'rgba(16,185,129,.35)':'rgba(192,40,45,.25)')+';'+
-        'background:'+(curPaid?'rgba(16,185,129,.08)':'rgba(192,40,45,.06)')+';transition:all .15s">'+
-        '<div style="font-size:9px;font-weight:600;letter-spacing:.06em;color:var(--text3);margin-bottom:3px">'+MONTHS_S[parseInt(curMo.split("-")[1])-1]+'/'+curMo.split("-")[0]+'</div>'+
-        '<div style="display:flex;align-items:center;justify-content:space-between">'+
-          '<span style="font-family:var(--mono);font-size:12px;font-weight:600;color:'+(curPaid?'var(--emerald)':'var(--red)')+'">'+fmtMoney(curP?curP.value:(c.value||0))+'</span>'+
-          '<span style="font-size:10px;font-weight:700;color:'+(curPaid?'var(--emerald)':'var(--text3)')+'">'+( curPaid?'✓':'PENDENTE')+'</span>'+
-        '</div></div>';
-      // Previous month card
-      wrap+='<div data-cid="'+c.id+'" data-mk="'+prevMo+'" onclick="togPayDirect(this.dataset.cid,this.dataset.mk)" '+
-        'style="padding:8px 10px;border-radius:8px;cursor:pointer;border:1px solid '+(prevPaid?'rgba(16,185,129,.35)':'rgba(192,40,45,.25)')+';'+
-        'background:'+(prevPaid?'rgba(16,185,129,.06)':'rgba(192,40,45,.04)')+';transition:all .15s;opacity:.8">'+
-        '<div style="font-size:9px;font-weight:600;letter-spacing:.06em;color:var(--text3);margin-bottom:3px">'+MONTHS_S[parseInt(prevMo.split("-")[1])-1]+'/'+prevMo.split("-")[0]+'</div>'+
-        '<div style="display:flex;align-items:center;justify-content:space-between">'+
-          '<span style="font-family:var(--mono);font-size:12px;font-weight:600;color:'+(prevPaid?'var(--emerald)':'var(--red)')+'">'+fmtMoney(prevP?prevP.value:(c.value||0))+'</span>'+
-          '<span style="font-size:10px;font-weight:700;color:'+(prevPaid?'var(--emerald)':'var(--text3)')+'">'+( prevPaid?'✓':'PENDENTE')+'</span>'+
-        '</div></div>';
+      // Só mostra card se o mês foi registrado manualmente em payments
+      if(curP){
+        wrap+='<div data-cid="'+c.id+'" data-mk="'+curMo+'" onclick="togPayDirect(this.dataset.cid,this.dataset.mk)" '+
+          'style="padding:8px 10px;border-radius:8px;cursor:pointer;border:1px solid '+(curPaid?'rgba(16,185,129,.35)':'rgba(192,40,45,.25)')+';'+
+          'background:'+(curPaid?'rgba(16,185,129,.08)':'rgba(192,40,45,.06)')+';transition:all .15s">'+
+          '<div style="font-size:9px;font-weight:600;letter-spacing:.06em;color:var(--text3);margin-bottom:3px">'+MONTHS_S[parseInt(curMo.split("-")[1])-1]+'/'+curMo.split("-")[0]+'</div>'+
+          '<div style="display:flex;align-items:center;justify-content:space-between">'+
+            '<span style="font-family:var(--mono);font-size:12px;font-weight:600;color:'+(curPaid?'var(--emerald)':'var(--red)')+'">'+fmtMoney(curP.value)+'</span>'+
+            '<span style="font-size:10px;font-weight:700;color:'+(curPaid?'var(--emerald)':'var(--text3)')+'">'+( curPaid?'✓':'PENDENTE')+'</span>'+
+          '</div></div>';
+      }
+      if(prevP){
+        wrap+='<div data-cid="'+c.id+'" data-mk="'+prevMo+'" onclick="togPayDirect(this.dataset.cid,this.dataset.mk)" '+
+          'style="padding:8px 10px;border-radius:8px;cursor:pointer;border:1px solid '+(prevPaid?'rgba(16,185,129,.35)':'rgba(192,40,45,.25)')+';'+
+          'background:'+(prevPaid?'rgba(16,185,129,.06)':'rgba(192,40,45,.04)')+';transition:all .15s;opacity:.8">'+
+          '<div style="font-size:9px;font-weight:600;letter-spacing:.06em;color:var(--text3);margin-bottom:3px">'+MONTHS_S[parseInt(prevMo.split("-")[1])-1]+'/'+prevMo.split("-")[0]+'</div>'+
+          '<div style="display:flex;align-items:center;justify-content:space-between">'+
+            '<span style="font-family:var(--mono);font-size:12px;font-weight:600;color:'+(prevPaid?'var(--emerald)':'var(--red)')+'">'+fmtMoney(prevP.value)+'</span>'+
+            '<span style="font-size:10px;font-weight:700;color:'+(prevPaid?'var(--emerald)':'var(--text3)')+'">'+( prevPaid?'✓':'PENDENTE')+'</span>'+
+          '</div></div>';
+      }
+      if(!curP&&!prevP){
+        wrap+='<div style="padding:10px;border-radius:8px;border:1px solid var(--bdr2);background:var(--bg3);text-align:center">'
+          +'<div style="font-size:10px;color:var(--text3)">Nenhum pagamento<br>registrado ainda</div>'
+          +'</div>';
+      }
       }
       // Stats footer
       wrap+='<div style="margin-top:4px;padding:6px 4px;border-top:1px solid var(--bdr)">'
