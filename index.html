@@ -1255,86 +1255,94 @@ function filterRows(v){renderContent()}
 function renderKanbanView(el){
   var b=board();
 
-  // ── CLIENTS: Trello-style ─────────────────
+  // ── CLIENTS / ADVOCACIA: listas por grupo + drag & drop ──────
   if(b.type==='clients'||b.type==='advocacia'){
     var curMo=curKey();
     var prevMo=(function(){var d=new Date();d.setMonth(d.getMonth()-1);return mkKey(d.getFullYear(),d.getMonth()+1);})();
-    var clients=b.items||[];
+    var allClients=b.items||[];
     var searchVal=(document.getElementById('search-inp')?document.getElementById('search-inp').value:'').toLowerCase();
-    if(searchVal)clients=clients.filter(function(c){return c.name.toLowerCase().includes(searchVal);});
+    var groups=b.groups||[];
 
-    var wrap='<div style="display:flex;gap:12px;overflow-x:auto;padding-bottom:16px;min-height:400px">';
-    clients.forEach(function(c){
+    function buildPayCard(c,mk){
+      var p=(c.payments||[]).find(function(x){return x.month===mk;});
+      if(!p)return'';
+      var paid=p.paid;
+      var mo=mk.split('-');
+      return'<div data-cid="'+c.id+'" data-mk="'+mk+'" onclick="event.stopPropagation();togPayDirect(this.dataset.cid,this.dataset.mk)" '
+        +'style="padding:6px 8px;border-radius:7px;cursor:pointer;margin-top:4px;'
+        +'border:1px solid '+(paid?'rgba(16,185,129,.35)':'rgba(192,40,45,.25)')+'">'
+        +'<div style="font-size:9px;font-weight:600;letter-spacing:.05em;color:var(--text3)">'+MONTHS_S[parseInt(mo[1])-1]+'/'+mo[0]+'</div>'
+        +'<div style="display:flex;align-items:center;justify-content:space-between;margin-top:1px">'
+        +'<span style="font-family:var(--mono);font-size:11px;font-weight:600;color:'+(paid?'var(--emerald)':'var(--red)')+'">'+fmtMoney(p.value)+'</span>'
+        +'<span style="font-size:9px;font-weight:700;color:'+(paid?'var(--emerald)':'var(--text3)')+'">'+( paid?'✓':'PEND.')+'</span>'
+        +'</div></div>';
+    }
+
+    function buildCard(c){
       var statusColor=STATUS_COLORS[c.status]||'var(--text3)';
-      var curP=(c.payments||[]).find(function(p){return p.month===curMo;});
-      var prevP=(c.payments||[]).find(function(p){return p.month===prevMo;});
-      var curPaid=curP&&curP.paid;
-      var prevPaid=prevP&&prevP.paid;
-      var totalPaid=(c.payments||[]).filter(function(p){return p.paid;}).reduce(function(s,p){return s+(p.value||c.value||0);},0);
-      var meses=(c.payments||[]).length;
-
       var isInativo=c.status==='inativo';
-      wrap+='<div style="flex-shrink:0;width:200px;background:var(--surface);border:1px solid var(--bdr);border-radius:var(--radius-lg);overflow:hidden;display:flex;flex-direction:column'+(isInativo?';opacity:.65':'')+'">';
-      // Column header
-      wrap+='<div style="padding:10px 12px;border-bottom:1px solid var(--bdr);border-top:3px solid '+statusColor+';cursor:pointer" onclick="openItem(\''+c.id+'\')">'+
-        '<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">'+escH(c.name)+'</div>'+
-        '<div style="display:flex;align-items:center;gap:6px">'+
-          '<span class="status-pill '+c.status+'">'+( STATUS_LABELS[c.status]||c.status)+'</span>'+
-          (c.value?'<span style="font-family:var(--mono);font-size:11px;color:var(--text3)">'+fmtMoney(c.value)+'/mês</span>':'')+'</div>'+
-        '</div>';
-      // Payment cards
-      wrap+='<div style="padding:8px;flex:1;display:flex;flex-direction:column;gap:6px">';
-      if(isInativo){
-        // Inactive: show neutral "Inativo" badge instead of pending payment prompts
-        wrap+='<div style="padding:10px;border-radius:8px;border:1px solid var(--bdr2);background:var(--bg3);text-align:center">'
-          +'<div style="font-size:10px;font-weight:700;letter-spacing:.06em;color:var(--text3)">CLIENTE INATIVO</div>'
-          +'<div style="font-size:10px;color:var(--text3);margin-top:3px">Sem cobrança ativa</div>'
-          +'</div>';
-      } else {
-      // Só mostra card se o mês foi registrado manualmente em payments
-      if(curP){
-        wrap+='<div data-cid="'+c.id+'" data-mk="'+curMo+'" onclick="togPayDirect(this.dataset.cid,this.dataset.mk)" '+
-          'style="padding:8px 10px;border-radius:8px;cursor:pointer;border:1px solid '+(curPaid?'rgba(16,185,129,.35)':'rgba(192,40,45,.25)')+';'+
-          'background:'+(curPaid?'rgba(16,185,129,.08)':'rgba(192,40,45,.06)')+';transition:all .15s">'+
-          '<div style="font-size:9px;font-weight:600;letter-spacing:.06em;color:var(--text3);margin-bottom:3px">'+MONTHS_S[parseInt(curMo.split("-")[1])-1]+'/'+curMo.split("-")[0]+'</div>'+
-          '<div style="display:flex;align-items:center;justify-content:space-between">'+
-            '<span style="font-family:var(--mono);font-size:12px;font-weight:600;color:'+(curPaid?'var(--emerald)':'var(--red)')+'">'+fmtMoney(curP.value)+'</span>'+
-            '<span style="font-size:10px;font-weight:700;color:'+(curPaid?'var(--emerald)':'var(--text3)')+'">'+( curPaid?'✓':'PENDENTE')+'</span>'+
-          '</div></div>';
-      }
-      if(prevP){
-        wrap+='<div data-cid="'+c.id+'" data-mk="'+prevMo+'" onclick="togPayDirect(this.dataset.cid,this.dataset.mk)" '+
-          'style="padding:8px 10px;border-radius:8px;cursor:pointer;border:1px solid '+(prevPaid?'rgba(16,185,129,.35)':'rgba(192,40,45,.25)')+';'+
-          'background:'+(prevPaid?'rgba(16,185,129,.06)':'rgba(192,40,45,.04)')+';transition:all .15s;opacity:.8">'+
-          '<div style="font-size:9px;font-weight:600;letter-spacing:.06em;color:var(--text3);margin-bottom:3px">'+MONTHS_S[parseInt(prevMo.split("-")[1])-1]+'/'+prevMo.split("-")[0]+'</div>'+
-          '<div style="display:flex;align-items:center;justify-content:space-between">'+
-            '<span style="font-family:var(--mono);font-size:12px;font-weight:600;color:'+(prevPaid?'var(--emerald)':'var(--red)')+'">'+fmtMoney(prevP.value)+'</span>'+
-            '<span style="font-size:10px;font-weight:700;color:'+(prevPaid?'var(--emerald)':'var(--text3)')+'">'+( prevPaid?'✓':'PENDENTE')+'</span>'+
-          '</div></div>';
-      }
-      if(!curP&&!prevP){
-        wrap+='<div style="padding:10px;border-radius:8px;border:1px solid var(--bdr2);background:var(--bg3);text-align:center">'
-          +'<div style="font-size:10px;color:var(--text3)">Nenhum pagamento<br>registrado ainda</div>'
-          +'</div>';
-      }
-      }
-      // Stats footer
-      wrap+='<div style="margin-top:4px;padding:6px 4px;border-top:1px solid var(--bdr)">'
+      var totalPaid=(c.payments||[]).filter(function(p){return p.paid;}).reduce(function(s,p){return s+(p.value||0);},0);
+      var meses=(c.payments||[]).length;
+      var curCard=buildPayCard(c,curMo);
+      var prevCard=buildPayCard(c,prevMo);
+      var hist=(c.payments||[])
+        .filter(function(p){return p.month!==curMo&&p.month!==prevMo;})
+        .sort(function(a,b){return b.month.localeCompare(a.month);})
+        .slice(0,3);
+      var histCards=hist.map(function(p){return buildPayCard(c,p.month);}).join('');
+      var noPayments=!curCard&&!prevCard&&hist.length===0;
+      return '<div class="kc-cli" draggable="true" data-cid="'+c.id+'" data-bid="'+b.id+'" '
+        +'ondragstart="onDragStartCli(event)" ondragend="onDragEndCli(event)" '
+        +'style="width:190px;flex-shrink:0;background:var(--surface);border:1px solid var(--bdr);border-top:3px solid '+statusColor+';'
+        +'border-radius:10px;padding:10px 10px 8px;cursor:grab;user-select:none;'
+        +(isInativo?'opacity:.6;':'')
+        +'">'
+        +'<div onclick="openItem(\''+c.id+'\')" style="cursor:pointer">'
+        +'<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:5px">'+escH(c.name)+'</div>'
+        +'<div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">'
+        +'<span class="status-pill '+c.status+'">'+( STATUS_LABELS[c.status]||c.status)+'</span>'
+        +(c.value?'<span style="font-family:var(--mono);font-size:10px;color:var(--text3)">'+fmtMoney(c.value)+'/mês</span>':'')
+        +'</div></div>'
+        +(isInativo
+          ?'<div style="margin-top:8px;padding:6px;border-radius:6px;background:var(--bg3);text-align:center;font-size:10px;color:var(--text3)">Sem cobrança ativa</div>'
+          :(noPayments
+            ?'<div style="margin-top:8px;padding:6px;border-radius:6px;background:var(--bg3);text-align:center;font-size:10px;color:var(--text3)">Nenhum pagamento registrado</div>'
+            :curCard+prevCard+histCards)
+        )
+        +'<div style="margin-top:8px;padding-top:6px;border-top:1px solid var(--bdr)">'
         +'<div style="font-size:10px;color:var(--text3)">Total recebido</div>'
         +'<div style="font-family:var(--mono);font-size:12px;font-weight:600;color:var(--emerald)">'+fmtMoney(totalPaid)+'</div>'
-        +'<div style="font-size:10px;color:var(--text3);margin-top:2px">'+meses+' meses registrados</div>'
+        +'<div style="font-size:10px;color:var(--text3)">'+meses+' meses registrados</div>'
+        +'</div>'
         +'</div>';
-      wrap+='</div></div>';
+    }
+
+    var html='<div style="display:flex;flex-direction:column;gap:20px;padding-bottom:24px">';
+    groups.forEach(function(g,gi){
+      var clients=(allClients||[]).filter(function(c){
+        return c.group===g.id&&(!searchVal||c.name.toLowerCase().includes(searchVal));
+      });
+      html+='<div>'
+        +'<div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:10px;display:flex;align-items:center;gap:8px">'
+        +escH(g.name)
+        +'<span style="font-size:10px;font-weight:500;background:var(--bg3);border:1px solid var(--bdr);border-radius:99px;padding:1px 8px">'+clients.length+'</span>'
+        +'</div>'
+        +'<div class="kl-drop" data-gid="'+g.id+'" data-bid="'+b.id+'" '
+        +'ondragover="onDragOverLane(event)" ondrop="onDropLane(event)" ondragleave="onDragLeaveLane(event)" '
+        +'style="display:flex;flex-wrap:wrap;gap:10px;min-height:90px;padding:8px;border-radius:10px;border:1px dashed transparent;transition:border-color .15s">';
+      clients.forEach(function(c){html+=buildCard(c);});
+      if(gi===0){
+        html+='<div style="width:160px;min-height:80px;border:1px dashed var(--bdr2);border-radius:10px;'
+          +'display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text3);font-size:12px;'
+          +'flex-direction:column;gap:4px;transition:all .15s" '
+          +'onclick="addClientModal(\''+b.id+'\')" '
+          +'onmouseover="this.style.borderColor=\'var(--red)\';this.style.color=\'var(--red)\'" '
+          +'onmouseout="this.style.borderColor=\'\';this.style.color=\'\'"><span style="font-size:20px">+</span>Novo</div>';
+      }
+      html+='</div></div>';
     });
-    // Add new client column
-    wrap+='<div style="flex-shrink:0;width:180px;border:1px dashed var(--bdr2);border-radius:var(--radius-lg);'
-      +'display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text3);font-size:13px;'
-      +'flex-direction:column;gap:8px;transition:all .15s;min-height:200px" '
-      +'onclick="addClientModal(\''+b.id+'\')" '
-      +'onmouseover="this.style.borderColor=\'var(--red)\';this.style.color=\'var(--red)\'" '
-      +'onmouseout="this.style.borderColor=\'\';this.style.color=\'\'"><span style="font-size:24px">+</span>Novo cliente</div>';
-    wrap+='</div>';
-    el.innerHTML=wrap;
+    html+='</div>';
+    el.innerHTML=html;
     return;
   }
 
@@ -1342,11 +1350,11 @@ function renderKanbanView(el){
   const cols=b.groups||[];
   var searchValKK=(document.getElementById('search-inp')?.value||'').toLowerCase();
 
-  let html='<div class="kanban-wrap">';
+  let htmlK='<div class="kanban-wrap">';
   cols.forEach(g=>{
     const items=(b.items||[]).filter(it=>it.group===g.id&&(!searchValK||it.name.toLowerCase().includes(searchValK)));
     const col=STATUS_COLORS[g.id.replace('g-','').replace('gl-','').replace('gp-','')]||'#6c6c70';
-    html+=`<div class="kanban-col">
+    htmlK+=`<div class="kanban-col">
       <div class="kanban-col-head">
         <div class="kanban-col-dot" style="background:${col}"></div>
         <div class="kanban-col-name">${escH(g.name)}</div>
@@ -1374,11 +1382,11 @@ function renderKanbanView(el){
       </div>
     </div>`;
   });
-  html+=`<div class="kanban-new-col" onclick="openAddGroup()">
+  htmlK+=`<div class="kanban-new-col" onclick="openAddGroup()">
     <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
     Novo grupo
   </div></div>`;
-  el.innerHTML=html;
+  el.innerHTML=htmlK;
 }
 
 // ══════════════════════════════════════════════
@@ -1971,6 +1979,55 @@ function addClientModal(boardId){
   addLog("Cliente adicionado: "+name);
   save();renderContent();
 }
+// ── DRAG & DROP — kanban de clientes ──────────────────────────
+var _dragCid=null,_dragBid=null;
+function onDragStartCli(e){
+  _dragCid=e.currentTarget.dataset.cid;
+  _dragBid=e.currentTarget.dataset.bid;
+  e.currentTarget.style.opacity='.4';
+  e.dataTransfer.effectAllowed='move';
+}
+function onDragEndCli(e){
+  e.currentTarget.style.opacity='';
+  document.querySelectorAll('.kl-drop').forEach(function(el){
+    el.style.borderColor='transparent';
+    el.style.background='';
+  });
+}
+function onDragOverLane(e){
+  e.preventDefault();
+  e.dataTransfer.dropEffect='move';
+  e.currentTarget.style.borderColor='var(--red)';
+  e.currentTarget.style.background='rgba(192,40,45,.04)';
+}
+function onDragLeaveLane(e){
+  e.currentTarget.style.borderColor='transparent';
+  e.currentTarget.style.background='';
+}
+function onDropLane(e){
+  e.preventDefault();
+  var lane=e.currentTarget;
+  lane.style.borderColor='transparent';
+  lane.style.background='';
+  var newGroup=lane.dataset.gid;
+  var bid=lane.dataset.bid;
+  if(!_dragCid||!newGroup)return;
+  var b=D.boards.find(function(x){return x.id===bid;});
+  if(!b)return;
+  var item=b.items.find(function(x){return x.id===_dragCid;});
+  if(!item)return;
+  item.group=newGroup;
+  // Atualiza status conforme grupo (inferência simples por id)
+  if(newGroup.indexOf('inativo')!==-1||newGroup.indexOf('enc')!==-1){
+    item.status=(b.type==='advocacia')?'encerrado':'inativo';
+  } else {
+    if(item.status==='inativo'||item.status==='encerrado')item.status='ativo';
+  }
+  _dragCid=null;_dragBid=null;
+  addLog('Cliente movido para '+newGroup);
+  save();renderContent();
+}
+
 function togPayDirect(clientId,month){
   var found=false;
   D.boards.forEach(function(b){
