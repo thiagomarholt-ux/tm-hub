@@ -1040,9 +1040,16 @@ function renderContent(){
 // ══════════════════════════════════════════════
 //  DASHBOARD (FINANCEIRO)
 // ══════════════════════════════════════════════
+function finMudarMes(delta){
+  var mk=_finMes||curKey();
+  var parts=mk.split('-');
+  var d=new Date(parseInt(parts[0]),parseInt(parts[1])-1+delta,1);
+  _finMes=mkKey(d.getFullYear(),d.getMonth()+1);
+  renderContent();
+}
 function renderDashboard(el){
-  const mk=curKey();
-  const prevMo=(()=>{const d=new Date();d.setMonth(d.getMonth()-1);return mkKey(d.getFullYear(),d.getMonth()+1);})();
+  const mk=_finMes||curKey();
+  const prevMo=(()=>{const parts=mk.split('-');const d=new Date(parseInt(parts[0]),parseInt(parts[1])-2,1);return mkKey(d.getFullYear(),d.getMonth()+1);})();
   const[yr,mo]=mk.split('-');
   const trafBoard=D.boards.find(b=>b.id==='cli');
   const advBoard=D.boards.find(b=>b.id==='adv');
@@ -1067,6 +1074,15 @@ function renderDashboard(el){
   const aPct=advAtivos.length?Math.round(aPaidN/advAtivos.length*100):0;
 
   el.innerHTML=`
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+    <div style="font-size:13px;font-weight:600;color:var(--text)">Financeiro</div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <button onclick="finMudarMes(-1)" style="background:var(--surface2);border:1px solid rgba(255,255,255,.08);color:var(--text);border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:15px">&#8249;</button>
+      <span style="font-size:13px;font-weight:600;color:var(--text);min-width:100px;text-align:center">${MONTHS_PT[parseInt(mo)-1]} ${yr}</span>
+      <button onclick="finMudarMes(1)" style="background:var(--surface2);border:1px solid rgba(255,255,255,.08);color:var(--text);border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:15px">&#8250;</button>
+      ${_finMes?'<button onclick="_finMes=null;renderContent()" style="background:transparent;border:1px solid rgba(255,255,255,.08);color:var(--text3);border-radius:6px;padding:0 10px;height:28px;cursor:pointer;font-size:11px">Hoje</button>':''}
+    </div>
+  </div>
   <div class="dash-grid">
     <div class="dash-card accent" style="grid-column:span 2">
       <div class="dc-label">Receita do mês</div>
@@ -1106,15 +1122,15 @@ function renderDashboard(el){
       <div class="prog-label"><span>0%</span><span>${tPct}%</span></div>
     </div>
     <div class="dash-card">
+      <div class="dc-label">Pendente tráfego</div>
+      <div class="dc-val red">${fmtMoney(tPend)}</div>
+    </div>
+    <div class="dash-card">
       <div class="dc-label">Advocacia</div>
       <div class="dc-val blue">${fmtMoney(aPaid)}</div>
       <div class="dc-sub">${aPaidN} cliente(s) com honorários</div>
       <div class="prog-track"><div class="prog-fill" style="width:${aPct}%;background:var(--s-blue)"></div></div>
       <div class="prog-label"><span>0%</span><span>${aPct}%</span></div>
-    </div>
-    <div class="dash-card">
-      <div class="dc-label">Pendente tráfego</div>
-      <div class="dc-val red">${fmtMoney(tPend)}</div>
     </div>
     <div class="dash-card">
       <div class="dc-label">Pendente advocacia</div>
@@ -1352,7 +1368,7 @@ function renderKanbanView(el){
 
   let htmlK='<div class="kanban-wrap">';
   cols.forEach(g=>{
-    const items=(b.items||[]).filter(it=>it.group===g.id&&(!searchValK||it.name.toLowerCase().includes(searchValK)));
+    const items=(b.items||[]).filter(it=>it.group===g.id&&(!searchValKK||it.name.toLowerCase().includes(searchValKK)));
     const col=STATUS_COLORS[g.id.replace('g-','').replace('gl-','').replace('gp-','')]||'#6c6c70';
     htmlK+=`<div class="kanban-col">
       <div class="kanban-col-head">
@@ -1453,16 +1469,25 @@ function renderMeuDia(el){
     +'<div id="md-clock" style="font-size:11px;color:var(--text3);font-family:var(--mono);background:var(--bg3);border:1px solid var(--bdr);border-radius:8px;padding:5px 12px">--:--</div>'
     +'</div>';
 
-  // MITs
-  out+='<div class="md-section"><div class="md-section-title">📌 Anotações rápidas do dia</div>';
-  for(var mi=0;mi<3;mi++){
-    var m=md.mits[mi]||{id:uid(),text:'',done:false};
-    out+='<div class="mit-card'+(m.done?' done-card':'')+'">'
-      +'<div class="mit-num'+(m.done?' done-num':'')+'">'+(mi+1)+'</div>'
+  // MITs — dinâmicos, sem limite fixo
+  var mits=md.mits||[];
+  out+='<div class="md-section">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
+    +'<div class="md-section-title" style="margin-bottom:0">📌 Anotações rápidas do dia</div>'
+    +'<button onclick="addMIT()" style="background:transparent;border:1px solid var(--bdr2);color:var(--text2);border-radius:6px;padding:1px 10px;cursor:pointer;font-size:18px;line-height:1.4">+</button>'
+    +'</div>';
+  if(mits.length===0){
+    out+='<div style="text-align:center;padding:16px;color:var(--text3);font-size:13px">Nenhuma anotação. Clique em + para adicionar.</div>';
+  }
+  for(var mi=0;mi<mits.length;mi++){
+    var m=mits[mi];
+    out+='<div class="mit-card'+(m.done?' done-card':'')+'" style="display:flex;align-items:center;gap:8px">'
+      +'<div class="mit-num'+(m.done?' done-num':'')+'">'+( mi+1)+'</div>'
       +'<input style="flex:1;background:transparent;border:none;outline:none;font-size:14px;font-weight:500;'
       +'color:'+(m.done?'var(--text3)':'var(--text)')+';text-decoration:'+(m.done?'line-through':'none')+';font-family:var(--sans)" '
-      +'id="mit-inp-'+mi+'" placeholder="Prioridade '+(mi+1)+'..." value="'+escH(m.text)+'" oninput="saveMIT('+mi+',this.value)">'
-      +'<div class="mit-cb'+(m.done?' done':'')+'" onclick="toggleMIT(&quot;'+m.id+'&quot;)">'+(m.done?'&#10003;':'')+'</div>'
+      +'id="mit-inp-'+mi+'" placeholder="Anotação '+(mi+1)+'..." value="'+escH(m.text)+'" oninput="saveMIT('+mi+',this.value)">'
+      +'<div class="mit-cb'+(m.done?' done':'')+'" onclick="toggleMIT(&quot;'+m.id+'&quot;)">'+( m.done?'&#10003;':'')+'</div>'
+      +'<button onclick="delMIT(&quot;'+m.id+'&quot;)" style="background:transparent;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:0 2px;flex-shrink:0;opacity:.5">&#215;</button>'
       +'</div>';
   }
   out+='</div>';
@@ -1558,6 +1583,9 @@ function toggleMDTask(id){
   save();renderContent();
 }
 function saveMIT(idx,val){var md=getMD();if(!md.mits[idx])md.mits[idx]={id:uid(),text:'',done:false};md.mits[idx].text=val;saveMD(md);}
+function addMIT(){var md=getMD();if(!md.mits)md.mits=[];md.mits.push({id:uid(),text:'',done:false});saveMD(md);renderContent();}
+function delMIT(id){var md=getMD();md.mits=(md.mits||[]).filter(function(x){return x.id!==id;});saveMD(md);renderContent();}
+
 function toggleMIT(id){var md=getMD();var m=md.mits.find(function(x){return x.id===id;});if(m)m.done=!m.done;saveMD(md);renderContent();}
 function saveReview(key,val){var md=getMD();if(key==='_save'){addLog('Revisão salva');alert('Salvo!');}else{if(!md.review)md.review={};md.review[key]=val;}saveMD(md);}
 
@@ -1720,7 +1748,8 @@ function renderDespesas(el){
 }
 
 // Renderiza a seção "Gastos Pessoais" — resumo por categoria + lista + importação
-var _gpMesAtual=null; // null = usa o mês corrente na primeira vez; depois guarda a navegação do usuário
+var _gpMesAtual=null;
+var _finMes=null; // null = mês corrente // null = usa o mês corrente na primeira vez; depois guarda a navegação do usuário
 function gpMudarMes(delta){
   var mk=_gpMesAtual||curKey();
   var parts=mk.split('-');
