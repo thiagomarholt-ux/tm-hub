@@ -1675,6 +1675,15 @@ function confirmarImportacaoGP(itensRevisados){
   addLog('Importação: '+itensRevisados.length+' gastos pessoais adicionados');
 }
 
+function despMudarMes(delta){
+  var mk=_despMes||curKey();
+  var parts=mk.split('-');
+  var d=new Date(parseInt(parts[0]),parseInt(parts[1])-1+delta,1);
+  _despMes=mkKey(d.getFullYear(),d.getMonth()+1);
+  renderContent();
+}
+var _despMes=null;
+
 function renderDespesas(el){
   var desp=loadDesp();
   var items=desp.items||[];
@@ -1688,17 +1697,28 @@ function renderDespesas(el){
   var totalDesp=items.reduce(function(s,x){return s+(parseFloat(x.value)||0);},0);
 
   // Get revenue
-  var mk=curKey();
+  var mk=_despMes||curKey();
+  var mo=mk.split('-');
   var trafBoard=D.boards.find(function(b){return b.id==='cli';});
   var advBoard=D.boards.find(function(b){return b.id==='adv';});
   var recTraf=(trafBoard?trafBoard.items||[]:[]).filter(function(c){return c.group==='g-ativo';})
     .reduce(function(s,c){var p=(c.payments||[]).find(function(x){return x.month===mk;});return s+(p&&p.paid?(p.value||c.value||0):0);},0);
   var recAdv=(advBoard?advBoard.items||[]:[])
-    .reduce(function(s,c){return s+(c.payments||[]).filter(function(p){return p.paid;}).reduce(function(ss,p){return ss+(p.value||0);},0);},0);
+    .reduce(function(s,c){var p=(c.payments||[]).find(function(x){return x.month===mk;});return s+(p&&p.paid?(p.value||0):0);},0);
   var recTotal=recTraf+recAdv;
   var lucro=recTotal-totalDesp;
 
   var out='';
+
+  // Seletor de mês
+  out+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">';
+  out+='<div style="font-size:13px;font-weight:600;color:var(--text)">Despesas</div>';
+  out+='<div style="display:flex;align-items:center;gap:10px">';
+  out+='<button onclick="despMudarMes(-1)" style="background:var(--surface2);border:1px solid rgba(255,255,255,.08);color:var(--text);border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:15px">&#8249;</button>';
+  out+='<span style="font-size:13px;font-weight:600;color:var(--text);min-width:100px;text-align:center">'+MONTHS_PT[parseInt(mo[1])-1]+' '+mo[0]+'</span>';
+  out+='<button onclick="despMudarMes(1)" style="background:var(--surface2);border:1px solid rgba(255,255,255,.08);color:var(--text);border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:15px">&#8250;</button>';
+  out+=(_despMes?'<button onclick="_despMes=null;renderContent()" style="background:transparent;border:1px solid rgba(255,255,255,.08);color:var(--text3);border-radius:6px;padding:0 10px;height:28px;cursor:pointer;font-size:11px">Hoje</button>':'');
+  out+='</div></div>';
 
   // Summary cards
   out+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">';
