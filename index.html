@@ -1032,6 +1032,12 @@ function renderContent(){
   if(b.type==='pagamentos'){el.innerHTML='';renderPagamentos(el);return}
   if(b.type==='links'){el.innerHTML='';renderLinks(el);return}
 
+  if(b.type==='leads'&&(curView==='kanban'||!curView)){
+    el.innerHTML='<div id="leads-docs-section" style="padding:0 2px"></div><div id="leads-kanban-wrap"></div>';
+    renderLeadsDocs(document.getElementById('leads-docs-section'));
+    renderKanbanView(document.getElementById('leads-kanban-wrap'));
+    return;
+  }
   if(curView==='tabela') renderTableView(el);
   else if(curView==='kanban') renderKanbanView(el);
   else renderChartView(el);
@@ -2199,6 +2205,95 @@ function renderLinks(el){
   // Re-apply search
   var si=document.getElementById('link-search');
   if(si&&search)si.value=search;
+}
+
+// ══════════════════════════════════════════════
+//  LEADS — DOCUMENTOS DE CAPTAÇÃO (Supabase Storage)
+// ══════════════════════════════════════════════
+async function renderLeadsDocs(el){
+  el.innerHTML='<div style="color:var(--text3);font-size:12px;padding:6px 0 12px">Carregando documentos...</div>';
+  var docs=[];
+  try{
+    var res=await fetch(SB_URL+'/storage/v1/object/list/leads-docs',{
+      method:'POST',
+      headers:{'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'},
+      body:JSON.stringify({prefix:'',limit:100,sortBy:{column:'created_at',order:'desc'}})
+    });
+    if(res.ok)docs=await res.json();
+  }catch(e){}
+  var publicBase=SB_URL+'/storage/v1/object/public/leads-docs/';
+  var extIcon=function(ext){
+    if(ext==='pdf')return'<svg viewBox="0 0 24 24" style="width:18px;height:18px;fill:none;stroke:var(--red);stroke-width:1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>';
+    return'<svg viewBox="0 0 24 24" style="width:18px;height:18px;fill:none;stroke:var(--s-blue);stroke-width:1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+  };
+  var h='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
+    +'<div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3)">Documentos de Captação'
+    +(docs.length?'<span style="margin-left:6px;background:rgba(255,255,255,.06);border-radius:8px;padding:1px 7px;font-size:10px">'+docs.length+'</span>':'')
+    +'</div>'
+    +'<label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;background:var(--surface2);border:1px solid var(--bdr2);color:var(--text2);border-radius:7px;padding:5px 12px;font-size:12px;font-weight:500;transition:border-color .15s" onmouseover="this.style.borderColor=\'var(--bdr3)\'" onmouseout="this.style.borderColor=\'var(--bdr2)\'">'
+    +'<svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>'
+    +'Upload'
+    +'<input type="file" id="leads-doc-file" style="display:none" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.png,.jpg,.jpeg" onchange="uploadLeadsDoc()">'
+    +'</label></div>';
+  if(!docs.length){
+    h+='<div style="color:var(--text3);font-size:12px;padding:4px 0 8px">Nenhum documento ainda. Faça upload de PDFs e materiais de captação.</div>';
+  }else{
+    h+='<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:4px">';
+    docs.forEach(function(doc){
+      var name=doc.name;
+      var display=name.replace(/^\d+_/,'');
+      var ext=(display.split('.').pop()||'').toLowerCase();
+      var url=publicBase+encodeURIComponent(name);
+      var date=doc.created_at?new Date(doc.created_at).toLocaleDateString('pt-BR'):'';
+      h+='<div style="background:var(--surface);border:1px solid var(--bdr);border-radius:var(--radius);padding:10px 12px;display:flex;align-items:center;gap:10px;min-width:180px;flex:1;max-width:320px">'
+        +'<div style="flex-shrink:0">'+extIcon(ext)+'</div>'
+        +'<div style="flex:1;min-width:0">'
+        +'<div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+escH(display)+'">'+escH(display)+'</div>'
+        +(date?'<div style="font-size:10px;color:var(--text3);margin-top:2px">'+date+'</div>':'')
+        +'</div>'
+        +'<div style="display:flex;gap:4px;flex-shrink:0">'
+        +'<a href="'+url+'" target="_blank" style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.2);color:#3b82f6;text-decoration:none" title="Abrir">'
+        +'<svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>'
+        +'</a>'
+        +'<button onclick="deleteLeadsDoc(\''+name+'\')" style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;background:rgba(192,40,45,.08);border:1px solid rgba(192,40,45,.15);color:var(--red);cursor:pointer" title="Excluir">'
+        +'<svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>'
+        +'</button>'
+        +'</div></div>';
+    });
+    h+='</div>';
+  }
+  h+='<div style="height:1px;background:var(--bdr);margin:12px 0 16px"></div>';
+  el.innerHTML=h;
+}
+
+async function uploadLeadsDoc(){
+  var inp=document.getElementById('leads-doc-file');
+  if(!inp||!inp.files[0])return;
+  var file=inp.files[0];
+  var fname=Date.now()+'_'+file.name.replace(/[^a-zA-Z0-9._\-]/g,'_');
+  var lbl=inp.closest('label');
+  if(lbl)lbl.style.opacity='.5';
+  try{
+    var res=await fetch(SB_URL+'/storage/v1/object/leads-docs/'+encodeURIComponent(fname),{
+      method:'POST',
+      headers:{'Authorization':'Bearer '+SB_KEY,'Content-Type':file.type||'application/octet-stream','x-upsert':'true'},
+      body:file
+    });
+    if(!res.ok){var e=await res.json();alert('Erro: '+(e.message||res.status));if(lbl)lbl.style.opacity='1';return;}
+    renderContent();
+  }catch(e){alert('Erro ao enviar arquivo.');if(lbl)lbl.style.opacity='1';}
+}
+
+async function deleteLeadsDoc(fname){
+  if(!confirm('Excluir "'+fname.replace(/^\d+_/,'')+'"?'))return;
+  try{
+    await fetch(SB_URL+'/storage/v1/object/leads-docs',{
+      method:'DELETE',
+      headers:{'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'},
+      body:JSON.stringify({prefixes:[fname]})
+    });
+  }catch(e){}
+  renderContent();
 }
 
 function addLink2(){
