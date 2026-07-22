@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
@@ -655,7 +655,7 @@ function flushAllToSupabase(){
   sbSaveFlush();
   sbSaveMDFlush();
   sbSaveDespFlush();
-  sbSaveLinksFlush();
+
 }
 document.addEventListener('visibilitychange',function(){
   if(document.visibilityState==='hidden')flushAllToSupabase();
@@ -681,7 +681,7 @@ async function sbLoad(){
       D.boards=dbRow.boards;
       D.log=dbRow.log||[];
       // Ensure ALL boards from BOARDS_DEFAULT exist (inject missing ones)
-      const allCore=['fin','cli','adv','leads','pagamentos','links','despesas','meudia'];
+      const allCore=['fin','cli','adv','leads','pagamentos','despesas','meudia'];
       allCore.forEach(function(cid){
         if(!D.boards.find(function(b){return b.id===cid;})){
           const def=BOARDS_DEFAULT.find(function(b){return b.id===cid;});
@@ -703,10 +703,7 @@ async function sbLoad(){
     if(despRow&&(despRow.gp_items||despRow.gp_regras)){
       localStorage.setItem(GP_KEY,JSON.stringify({items:despRow.gp_items||[],regras:despRow.gp_regras||{}}));
     }
-    // Restore links (mesmo registro de despesas_data) — só sobrescreve se vier algo do remoto
-    if(despRow&&despRow.links_items&&despRow.links_items.length>0){
-      localStorage.setItem(LINKS_KEY,JSON.stringify({items:despRow.links_items}));
-    }
+
 
     // Restore meu dia
     if(mdRow&&mdRow.data&&mdRow.data.date){
@@ -816,9 +813,6 @@ const BOARDS_DEFAULT=[
     id:'pagamentos',name:'Pagamentos',icon:'dollar',type:'pagamentos',items:[]
   },
   {
-    id:'links',name:'Links',icon:'link',type:'links',items:[]
-  },
-  {
     id:'leads',name:'Pipeline de Leads',icon:'target',type:'leads',
     groups:[
       {id:'gl-novo',name:'Novos',collapsed:false},
@@ -884,12 +878,12 @@ function loadData(){
     const r=localStorage.getItem(SK);
     if(r){
       const parsed=JSON.parse(r);
-      const allCore=['fin','cli','adv','leads','meudia','despesas','pagamentos','links'];
+      const allCore=['fin','cli','adv','leads','meudia','despesas','pagamentos'];
       if(parsed.boards){
         // Remove empty non-core boards
         parsed.boards=parsed.boards.filter(b=>allCore.includes(b.id)||(b.items&&b.items.length>0));
         // Inject any missing core boards WITHOUT clearing data
-        const allCoreBoards=['fin','cli','adv','leads','pagamentos','links','despesas','meudia'];
+        const allCoreBoards=['fin','cli','adv','leads','pagamentos','despesas','meudia'];
         allCoreBoards.forEach(function(cid){
           if(!parsed.boards.find(function(b){return b.id===cid;})){
             const def=BOARDS_DEFAULT.find(function(b){return b.id===cid;});
@@ -941,7 +935,7 @@ function resetDashboard(){
 }
 function renderSidebar(){
   const el=document.getElementById('boards-list');
-  const BOARD_DESCS={fin:'Receita e pagamentos',cli:'Gestão de clientes',adv:'Processos e prazos',leads:'Funil de prospecção',pagamentos:'Visão de pagamentos',links:'Links e recursos',despesas:'Controle de despesas',meudia:'Foco do dia'};
+  const BOARD_DESCS={fin:'Receita e pagamentos',cli:'Gestão de clientes',adv:'Processos e prazos',leads:'Funil de prospecção',pagamentos:'Visão de pagamentos',despesas:'Controle de despesas',meudia:'Foco do dia'};
   el.innerHTML=D.boards.map(b=>`
     <div class="board-item${b.id===curBoardId?' active':''}" onclick="switchBoard('${b.id}')">
       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" style="flex-shrink:0">${BOARD_ICONS[b.icon]||BOARD_ICONS.grid}</svg>
@@ -1030,14 +1024,8 @@ function renderContent(){
   }
   if(b.type==='despesas'){el.innerHTML='';renderDespesas(el);return}
   if(b.type==='pagamentos'){el.innerHTML='';renderPagamentos(el);return}
-  if(b.type==='links'){el.innerHTML='';renderLinks(el);return}
 
-  if(b.type==='leads'&&(curView==='kanban'||!curView)){
-    el.innerHTML='<div id="leads-docs-section" style="padding:0 2px"></div><div id="leads-kanban-wrap"></div>';
-    renderLeadsDocs(document.getElementById('leads-docs-section'));
-    renderKanbanView(document.getElementById('leads-kanban-wrap'));
-    return;
-  }
+
   if(curView==='tabela') renderTableView(el);
   else if(curView==='kanban') renderKanbanView(el);
   else renderChartView(el);
@@ -2109,214 +2097,6 @@ function togPayDirect(clientId,month){
   if(found){save();renderContent();}
 }
 
-// ══════════════════════════════════════════════
-//  LINKS — repositório de links por categoria
-// ══════════════════════════════════════════════
-var LINKS_KEY='tm_links_v1';
-var LINK_CATS=['Tráfego','Advocacia','Ferramentas','Relatórios','Drive','Outros'];
-
-function loadLinks(){
-  try{var r=localStorage.getItem(LINKS_KEY);if(r)return JSON.parse(r);}catch(e){}
-  return{items:[]};
-}
-function saveLinks(d){localStorage.setItem(LINKS_KEY,JSON.stringify(d));try{sbSaveLinks();}catch(e){}}
-
-let _linksTimer=null;
-function sbSaveLinks(){
-  clearTimeout(_linksTimer);
-  _linksTimer=setTimeout(async()=>{
-    try{
-      var links=loadLinks();
-      await sbFetch('despesas_data','PATCH',{links_items:links.items,updated_at:new Date().toISOString()});
-    }catch(e){console.warn('Supabase links save error:',e);}
-  },1500);
-}
-async function sbSaveLinksFlush(){
-  clearTimeout(_linksTimer);
-  try{
-    var links=loadLinks();
-    await sbFetch('despesas_data','PATCH',{links_items:links.items,updated_at:new Date().toISOString()});
-  }catch(e){console.warn('Supabase links flush error:',e);}
-}
-
-function renderLinks(el){
-  var data=loadLinks();
-  var items=data.items||[];
-  var groups={};
-  LINK_CATS.forEach(function(c){groups[c]=[];});
-  items.forEach(function(it){
-    var c=it.cat||'Outros';
-    if(!groups[c])groups[c]=[];
-    groups[c].push(it);
-  });
-
-  var out='';
-
-  // Add link bar
-  out+='<div class="board-table-wrap" style="margin-bottom:16px"><div style="padding:14px 16px">'
-    +'<div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:10px">Adicionar link</div>'
-    +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
-    +'<input class="add-inp" id="link-new-name" placeholder="Nome do link..." style="flex:2;min-width:160px">'
-    +'<input class="add-inp" id="link-new-url" placeholder="https://..." style="flex:3;min-width:200px">'
-    +'<select class="add-inp" id="link-new-cat" style="flex:1;min-width:120px">';
-  LINK_CATS.forEach(function(c){out+='<option value="'+c+'">'+c+'</option>';});
-  out+='</select>'
-    +'<button class="add-btn" onclick="addLink2()">+</button>'
-    +'</div></div></div>';
-
-  // Search bar
-  out+='<div style="margin-bottom:14px">'
-    +'<input class="add-inp" id="link-search" placeholder="🔍 Buscar links..." style="width:100%;max-width:400px" oninput="renderContent()">'
-    +'</div>';
-
-  var search=(document.getElementById('link-search')||{value:''}).value.toLowerCase();
-
-  // Categories
-  var hasAny=false;
-  LINK_CATS.forEach(function(cat){
-    var catItems=(groups[cat]||[]).filter(function(it){
-      return !search||it.name.toLowerCase().includes(search)||it.url.toLowerCase().includes(search);
-    });
-    if(!catItems.length)return;
-    hasAny=true;
-    var catColors={Tráfego:'var(--red)',Advocacia:'var(--s-blue)',Ferramentas:'var(--s-purple)',Relatórios:'var(--s-yellow)',Drive:'var(--emerald)',Outros:'var(--text3)'};
-    out+='<div class="md-section"><div class="md-section-title" style="color:'+(catColors[cat]||'var(--text3)')+'">'+cat+' <span style="color:var(--text3);font-size:10px;font-weight:400">('+catItems.length+')</span></div>';
-    out+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;margin-bottom:4px">';
-    catItems.forEach(function(it){
-      out+='<div style="background:var(--surface);border:1px solid var(--bdr);border-radius:var(--radius);padding:12px 14px;display:flex;align-items:center;gap:10px;transition:border-color .2s,transform .2s" '
-        +'onmouseover="this.style.borderColor=\'var(--bdr2)\';this.style.transform=\'translateY(-2px)\'" '
-        +'onmouseout="this.style.borderColor=\'\';this.style.transform=\'\'">'
-        +'<div style="width:32px;height:32px;border-radius:8px;background:var(--bg3);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:16px">🔗</div>'
-        +'<div style="flex:1;min-width:0">'
-        +'<a href="'+escH(it.url)+'" target="_blank" style="font-size:13px;font-weight:500;color:var(--text);text-decoration:none;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+escH(it.url)+'">'+escH(it.name)+'</a>'
-        +'<div style="font-size:10px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">'+escH(it.url)+'</div>'
-        +'</div>'
-        +'<button data-lid="'+it.id+'" onclick="delLink2(this.dataset.lid)" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;flex-shrink:0;padding:4px;border-radius:6px" title="Remover">&#215;</button>'
-        +'</div>';
-    });
-    out+='</div></div>';
-  });
-
-  if(!hasAny&&items.length>0)out+='<div class="empty"><div class="empty-icon">🔍</div>Nenhum link encontrado</div>';
-  if(!items.length)out+='<div class="empty"><div class="empty-icon">🔗</div>Nenhum link ainda.<br><span style="font-size:12px">Adicione links acima para começar.</span></div>';
-
-  out+='<div style="height:40px"></div>';
-  el.innerHTML=out;
-  // Re-apply search
-  var si=document.getElementById('link-search');
-  if(si&&search)si.value=search;
-}
-
-// ══════════════════════════════════════════════
-//  LEADS — DOCUMENTOS DE CAPTAÇÃO (Supabase Storage)
-// ══════════════════════════════════════════════
-async function renderLeadsDocs(el){
-  el.innerHTML='<div style="color:var(--text3);font-size:12px;padding:6px 0 12px">Carregando documentos...</div>';
-  var docs=[];
-  try{
-    var res=await fetch(SB_URL+'/storage/v1/object/list/leads-docs',{
-      method:'POST',
-      headers:{'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'},
-      body:JSON.stringify({prefix:'',limit:100,sortBy:{column:'created_at',order:'desc'}})
-    });
-    if(res.ok)docs=await res.json();
-  }catch(e){}
-  var publicBase=SB_URL+'/storage/v1/object/public/leads-docs/';
-  var extIcon=function(ext){
-    if(ext==='pdf')return'<svg viewBox="0 0 24 24" style="width:18px;height:18px;fill:none;stroke:var(--red);stroke-width:1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>';
-    return'<svg viewBox="0 0 24 24" style="width:18px;height:18px;fill:none;stroke:var(--s-blue);stroke-width:1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
-  };
-  var h='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
-    +'<div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3)">Documentos de Captação'
-    +(docs.length?'<span style="margin-left:6px;background:rgba(255,255,255,.06);border-radius:8px;padding:1px 7px;font-size:10px">'+docs.length+'</span>':'')
-    +'</div>'
-    +'<label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;background:var(--surface2);border:1px solid var(--bdr2);color:var(--text2);border-radius:7px;padding:5px 12px;font-size:12px;font-weight:500;transition:border-color .15s" onmouseover="this.style.borderColor=\'var(--bdr3)\'" onmouseout="this.style.borderColor=\'var(--bdr2)\'">'
-    +'<svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>'
-    +'Upload'
-    +'<input type="file" id="leads-doc-file" style="display:none" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.png,.jpg,.jpeg" onchange="uploadLeadsDoc()">'
-    +'</label></div>';
-  if(!docs.length){
-    h+='<div style="color:var(--text3);font-size:12px;padding:4px 0 8px">Nenhum documento ainda. Faça upload de PDFs e materiais de captação.</div>';
-  }else{
-    h+='<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:4px">';
-    docs.forEach(function(doc){
-      var name=doc.name;
-      var display=name.replace(/^\d+_/,'');
-      var ext=(display.split('.').pop()||'').toLowerCase();
-      var url=publicBase+encodeURIComponent(name);
-      var date=doc.created_at?new Date(doc.created_at).toLocaleDateString('pt-BR'):'';
-      h+='<div style="background:var(--surface);border:1px solid var(--bdr);border-radius:var(--radius);padding:10px 12px;display:flex;align-items:center;gap:10px;min-width:180px;flex:1;max-width:320px">'
-        +'<div style="flex-shrink:0">'+extIcon(ext)+'</div>'
-        +'<div style="flex:1;min-width:0">'
-        +'<div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+escH(display)+'">'+escH(display)+'</div>'
-        +(date?'<div style="font-size:10px;color:var(--text3);margin-top:2px">'+date+'</div>':'')
-        +'</div>'
-        +'<div style="display:flex;gap:4px;flex-shrink:0">'
-        +'<a href="'+url+'" target="_blank" style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.2);color:#3b82f6;text-decoration:none" title="Abrir">'
-        +'<svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>'
-        +'</a>'
-        +'<button onclick="deleteLeadsDoc(\''+name+'\')" style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;background:rgba(192,40,45,.08);border:1px solid rgba(192,40,45,.15);color:var(--red);cursor:pointer" title="Excluir">'
-        +'<svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>'
-        +'</button>'
-        +'</div></div>';
-    });
-    h+='</div>';
-  }
-  h+='<div style="height:1px;background:var(--bdr);margin:12px 0 16px"></div>';
-  el.innerHTML=h;
-}
-
-async function uploadLeadsDoc(){
-  var inp=document.getElementById('leads-doc-file');
-  if(!inp||!inp.files[0])return;
-  var file=inp.files[0];
-  var fname=Date.now()+'_'+file.name.replace(/[^a-zA-Z0-9._\-]/g,'_');
-  var lbl=inp.closest('label');
-  if(lbl)lbl.style.opacity='.5';
-  try{
-    var res=await fetch(SB_URL+'/storage/v1/object/leads-docs/'+encodeURIComponent(fname),{
-      method:'POST',
-      headers:{'Authorization':'Bearer '+SB_KEY,'Content-Type':file.type||'application/octet-stream','x-upsert':'true'},
-      body:file
-    });
-    if(!res.ok){var e=await res.json();alert('Erro: '+(e.message||res.status));if(lbl)lbl.style.opacity='1';return;}
-    renderContent();
-  }catch(e){alert('Erro ao enviar arquivo.');if(lbl)lbl.style.opacity='1';}
-}
-
-async function deleteLeadsDoc(fname){
-  if(!confirm('Excluir "'+fname.replace(/^\d+_/,'')+'"?'))return;
-  try{
-    await fetch(SB_URL+'/storage/v1/object/leads-docs',{
-      method:'DELETE',
-      headers:{'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'},
-      body:JSON.stringify({prefixes:[fname]})
-    });
-  }catch(e){}
-  renderContent();
-}
-
-function addLink2(){
-  var name=(document.getElementById('link-new-name')||{value:''}).value.trim();
-  var url=(document.getElementById('link-new-url')||{value:''}).value.trim();
-  if(!name||!url){alert('Preencha nome e URL');return;}
-  if(!url.startsWith('http'))url='https://'+url;
-  var cat=(document.getElementById('link-new-cat')||{value:'Outros'}).value;
-  var data=loadLinks();
-  data.items.push({id:uid(),name:name,url:url,cat:cat,created:new Date().toISOString()});
-  saveLinks(data);
-  addLog('Link adicionado: '+name);
-  renderContent();
-}
-function delLink2(id){
-  var data=loadLinks();
-  var it=data.items.find(function(x){return x.id===id;});
-  if(it)addLog('Link removido: '+it.name);
-  data.items=data.items.filter(function(x){return x.id!==id;});
-  saveLinks(data);
-  renderContent();
-}
-
 
 // ══════════════════════════════════════════════
 //  BACKUP & RESTORE
@@ -2324,14 +2104,12 @@ function delLink2(id){
 function exportBackup(){
   var desp=localStorage.getItem(DESP_KEY)||'{"items":[]}';
   var md=localStorage.getItem(MD_KEY)||'{}';
-  var links=localStorage.getItem(LINKS_KEY)||'{"items":[]}';
   var backup={
     version:'tm-hub-v1',
     exportedAt:new Date().toISOString(),
     dashboard:{boards:D.boards,log:D.log},
     despesas:JSON.parse(desp),
     meudia:JSON.parse(md),
-    links:JSON.parse(links)
   };
   var json=JSON.stringify(backup,null,2);
   var blob=new Blob([json],{type:'application/json'});
@@ -2378,10 +2156,6 @@ function handleImport(input){
       if(backup.meudia){
         localStorage.setItem(MD_KEY,JSON.stringify(backup.meudia));
         try{sbSaveMD();}catch(ex){}
-      }
-      // Restore links
-      if(backup.links){
-        localStorage.setItem(LINKS_KEY,JSON.stringify(backup.links));
       }
       addLog('Backup restaurado de: '+file.name);
       renderSidebar();
