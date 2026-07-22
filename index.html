@@ -1110,10 +1110,10 @@ function renderDashboard(el){
     </div>
   </div>
   <div class="dash-grid">
-    <div class="dash-card" style="border-color:rgba(192,40,45,.25)">
-      <div class="dc-label">Despesas PJ</div>
-      <div class="dc-val" style="color:var(--red)">${fmtMoney((()=>{try{var d=JSON.parse(localStorage.getItem('tm_despesas_v1')||'{"items":[]}');return (d.items||[]).reduce((s,x)=>s+(parseFloat(x.value)||0),0);}catch(e){return 0;}})())}</div>
-      <div class="dc-sub">fixas + variáveis</div>
+    <div class="dash-card" style="border-color:rgba(192,40,45,.15);opacity:.7">
+      <div class="dc-label">Despesas PJ <span style="font-size:9px;font-weight:500;letter-spacing:.03em;text-transform:none;opacity:.7">(referência)</span></div>
+      <div class="dc-val" style="color:var(--red);font-size:18px">${fmtMoney((()=>{try{var d=JSON.parse(localStorage.getItem('tm_despesas_v1')||'{"items":[]}');return (d.items||[]).reduce((s,x)=>s+(parseFloat(x.value)||0),0);}catch(e){return 0;}})())}</div>
+      <div class="dc-sub">incluídas no extrato PF</div>
     </div>
     <div class="dash-card" style="border-color:rgba(249,115,22,.25)">
       <div class="dc-label">Gastos Pessoais PF</div>
@@ -1122,8 +1122,8 @@ function renderDashboard(el){
     </div>
     <div class="dash-card" style="border-color:rgba(16,185,129,.25)">
       <div class="dc-label">Resultado líquido</div>
-      <div class="dc-val" style="color:var(--emerald)">${fmtMoney((()=>{try{var d=JSON.parse(localStorage.getItem('tm_despesas_v1')||'{"items":[]}');var desp=(d.items||[]).reduce((s,x)=>s+(parseFloat(x.value)||0),0);return (tPaid+aPaid)-desp-gpTotal;}catch(e){return tPaid+aPaid-gpTotal;}})())}</div>
-      <div class="dc-sub">receita − PJ − PF</div>
+      <div class="dc-val" style="color:var(--emerald)">${fmtMoney((tPaid+aPaid)-gpTotal)}</div>
+      <div class="dc-sub">receita − gastos PF</div>
     </div>
   </div>
   <div class="dash-grid">
