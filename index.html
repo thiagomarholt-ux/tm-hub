@@ -1053,8 +1053,11 @@ function renderDashboard(el){
   let tPaid=0,tPaidN=0,tPend=0;
   trafAtivos.forEach(c=>{const p=(c.payments||[]).find(x=>x.month===mk);if(p&&p.paid){tPaid+=p.value||c.value;tPaidN++;}else tPend+=c.value||0;});
   const _gpRaw=(()=>{try{return JSON.parse(localStorage.getItem('tm_gastos_pessoais_v1')||'{"items":[]}');}catch(e){return {items:[]};} })();
-  const gpTotal=(_gpRaw.items||[]).filter(function(it){return it.mes===mk;}).reduce(function(s,it){return s+(parseFloat(it.valor)||0);},0);
-  const gpQtd=(_gpRaw.items||[]).filter(function(it){return it.mes===mk;}).length;
+  const _gpMes=(_gpRaw.items||[]).filter(function(it){return it.mes===mk;});
+  const gpSaidas=_gpMes.filter(function(it){return (parseFloat(it.valor)||0)>0;}).reduce(function(s,it){return s+(parseFloat(it.valor)||0);},0);
+  const gpEntradas=_gpMes.filter(function(it){return (parseFloat(it.valor)||0)<0;}).reduce(function(s,it){return s+Math.abs(parseFloat(it.valor)||0);},0);
+  const gpTotal=gpSaidas-gpEntradas;
+  const gpQtd=_gpMes.length;
   let aPaid=0,aPaidN=0,aPend=0;
   advAtivos.forEach(c=>{
     const p=(c.payments||[]).find(x=>x.month===mk);
@@ -1105,8 +1108,21 @@ function renderDashboard(el){
     </div>
     <div class="dash-card" style="border-color:rgba(249,115,22,.25)">
       <div class="dc-label">Gastos Pessoais PF</div>
-      <div class="dc-val" style="color:var(--s-orange)">${fmtMoney(gpTotal)}</div>
-      <div class="dc-sub">${gpQtd} lançamento${gpQtd!==1?'s':''} em ${MONTHS_PT[parseInt(mo)-1]}</div>
+      <div style="display:flex;gap:10px;margin:6px 0 4px">
+        <div style="flex:1">
+          <div style="font-size:9px;color:var(--text3);letter-spacing:.05em;text-transform:uppercase;margin-bottom:3px">Saídas</div>
+          <div style="font-family:var(--mono);font-size:13px;color:var(--red)">${fmtMoney(gpSaidas)}</div>
+        </div>
+        <div style="flex:1">
+          <div style="font-size:9px;color:var(--text3);letter-spacing:.05em;text-transform:uppercase;margin-bottom:3px">Entradas</div>
+          <div style="font-family:var(--mono);font-size:13px;color:var(--emerald)">${fmtMoney(gpEntradas)}</div>
+        </div>
+        <div style="flex:1">
+          <div style="font-size:9px;color:var(--text3);letter-spacing:.05em;text-transform:uppercase;margin-bottom:3px">Líquido</div>
+          <div style="font-family:var(--mono);font-size:13px;color:var(--s-orange)">${fmtMoney(gpTotal)}</div>
+        </div>
+      </div>
+      <div class="dc-sub">${gpQtd} lançamentos em ${MONTHS_PT[parseInt(mo)-1]}</div>
     </div>
     <div class="dash-card" style="border-color:rgba(16,185,129,.25)">
       <div class="dc-label">Resultado líquido</div>
@@ -1609,11 +1625,13 @@ function saveDesp(d){localStorage.setItem(DESP_KEY,JSON.stringify(d));try{sbSave
 //  GASTOS PESSOAIS (PF) — importação de extrato
 // ══════════════════════════════════════════════
 var GP_KEY='tm_gastos_pessoais_v1';
-var GP_CATS=['Combustível','Bares & Lazer','Mercado','Saúde','Restaurante/Lanche','Pix Diversos','Tarifas & Encargos','Transferências','A Categorizar'];
+var GP_CATS=['Combustível','Alimentação','Mercado','Restaurante/Lanche','Bares & Lazer','Entretenimento','Viagem & Hospedagem','Saúde','Assinaturas','Vestuário','Educação','Consórcio/Investimento','Tarifas & Encargos','Transferências','PIX Recebido','A Categorizar'];
 var GP_CAT_COLORS={
-  'Combustível':'#f59e0b','Bares & Lazer':'#a855f7','Mercado':'#10b981','Saúde':'#06b6d4',
-  'Restaurante/Lanche':'#ec4899','Pix Diversos':'#6366f1','Tarifas & Encargos':'#64748b',
-  'Transferências':'#3b82f6','A Categorizar':'#c0282d'
+  'Combustível':'#f59e0b','Alimentação':'#22c55e','Mercado':'#10b981','Restaurante/Lanche':'#ec4899',
+  'Bares & Lazer':'#a855f7','Entretenimento':'#8b5cf6','Viagem & Hospedagem':'#06b6d4',
+  'Saúde':'#06b6d4','Assinaturas':'#3b82f6','Vestuário':'#f43f5e','Educação':'#0ea5e9',
+  'Consórcio/Investimento':'#14b8a6','Tarifas & Encargos':'#64748b',
+  'Transferências':'#6366f1','PIX Recebido':'#10b981','A Categorizar':'#c0282d'
 };
 
 function loadGP(){
@@ -1630,14 +1648,21 @@ function categorizeGP(desc,regrasAprendidas){
     if(d.indexOf(chave.toUpperCase())!==-1)return regrasAprendidas[chave];
   }
   // 2. Regras padrão por palavra-chave
+  if(d.indexOf('PIX RECEBIDO')!==-1)return 'PIX Recebido';
   var rules=[
-    [['POSTO','COMBUSTIVEL','IPIRANGA','SHELL','ATLANTIC'],'Combustível'],
-    [['BAR','PUB','HOOKAH','TABACARIA','CHOPP','ARENA','EVENTOS','REPLAY','BEER','BOTECO','CONTAINER'],'Bares & Lazer'],
-    [['SUPERMERCADO','MERCADO','SUPERM'],'Mercado'],
+    [['POSTO','COMBUSTIVEL','IPIRANGA','SHELL','ATLANTIC','SANVEL','TONIN','PANORAMA','PACIFI','PRUDENTE','AMIGAO','MIMIM','SPREA','TIO ZICO','POSTO Z5','MNM COM','RUSSI DE POSTO','ZAFALON AUTO'],'Combustível'],
+    [['BAR','PUB','HOOKAH','TABACARIA','CHOPP','ARENA','REPLAY','BEER','BOTECO','CONTAINER','NORTH BEACH','PARADISE BEACH','CLOVER','QUINTAL BUTIA','SANTO ANGELO','SHED BAR'],'Bares & Lazer'],
+    [['TICKETMAIS','INGRESSO','SHOW','CINEMA','TEATRO'],'Entretenimento'],
+    [['SUPERMERCADO','MERCADO','SUPERM','KOMPRAO','PANIFICADORA','PADARIA','EMPORIO','ECOVILLE','CASA DE CARNES'],'Mercado'],
     [['FARMACIA','DROGARIA'],'Saúde'],
-    [['RESTAURANTE','LANCHE','PIZZA','GULA','PAO ','SORVETERIA','KONE'],'Restaurante/Lanche'],
-    [['IOF','JUROS','TARIFA','PACOTE SERV','SEGURO PRESTAMISTA','ANUIDADE'],'Tarifas & Encargos'],
-    [['TRANSF. PIX','TRANSF.RECEB','TED'],'Transferências']
+    [['RESTAURANTE','LANCHE','PIZZA','GULA','PAO ','SORVETERIA','KONE','ASFA LANCH','CRAVO','ROTA 66','RODOSNACK','IFOOD','IFOODBR','PARADA CERTA'],'Restaurante/Lanche'],
+    [['ALIMENTACAO','ACAI','BEBIDAS','CONVENIENCIA','PORTO DA FRUTA','ZEROHORA','PRIMATO','ADENILSON','ZAFALON SEDE'],'Alimentação'],
+    [['IOF','JUROS','TARIFA','PACOTE SERV','SEGURO PRESTAMISTA','ANUIDADE','PROTECAO','PERDA OU ROUBO','PEDAGSICOOB','PEDAGOG','DIARIA TAG','AQUISICAO TAG'],'Tarifas & Encargos'],
+    [['TRANSF. PIX','TRANSF.RECEB','VM CONFEC'],'Transferências'],
+    [['NETFLIX','SPOTIFY','APPLE','AMAZON PRIME','GOOGLE','YOUTUBE','LOOVI','JUSBRASIL','JUSB','DL*GOOGLE','ANTHROPIC','UNICEF','TIM*'],'Assinaturas'],
+    [['NIKE','SHOPEE','NETSHOES','INVICTUS','HERING','MARISA','RENNER','RIACHUELO'],'Vestuário'],
+    [['AIRBNB','HOTEL','POUSADA','HOSTEL'],'Viagem & Hospedagem'],
+    [['CONSOR','ADM CONSOR'],'Consórcio/Investimento']
   ];
   for(var i=0;i<rules.length;i++){
     var palavras=rules[i][0],cat=rules[i][1];
@@ -1796,8 +1821,15 @@ function renderGastosPessoaisSection(){
   out+='<button onclick="gpMudarMes(1)" style="background:var(--surface2);border:1px solid rgba(255,255,255,.08);color:var(--text);border-radius:6px;width:26px;height:26px;cursor:pointer;font-size:13px">&#8250;</button>';
   out+='</div></div>';
 
+  var _gpSaidas=itemsMes.filter(function(x){return (parseFloat(x.valor)||0)>0;}).reduce(function(s,x){return s+(parseFloat(x.valor)||0);},0);
+  var _gpEntradas=itemsMes.filter(function(x){return (parseFloat(x.valor)||0)<0;}).reduce(function(s,x){return s+Math.abs(parseFloat(x.valor)||0);},0);
+  var _gpLiquido=_gpSaidas-_gpEntradas;
   out+='<div class="board-table-wrap" style="margin-bottom:14px"><div style="padding:14px 16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">';
-  out+='<div><div class="dc-label">Total do mês</div><div class="dc-val" style="color:var(--red);font-size:22px">'+fmtMoney(totalMes)+'</div></div>';
+  out+='<div style="display:flex;gap:20px;align-items:flex-end">';
+  out+='<div><div class="dc-label" style="font-size:9px">Saídas</div><div style="font-family:var(--mono);font-size:18px;color:var(--red)">'+fmtMoney(_gpSaidas)+'</div></div>';
+  out+='<div><div class="dc-label" style="font-size:9px">Entradas</div><div style="font-family:var(--mono);font-size:18px;color:var(--emerald)">'+fmtMoney(_gpEntradas)+'</div></div>';
+  out+='<div><div class="dc-label" style="font-size:9px">Líquido</div><div style="font-family:var(--mono);font-size:18px;color:var(--s-orange)">'+fmtMoney(_gpLiquido)+'</div></div>';
+  out+='</div>';
   out+='<div style="display:flex;gap:8px">';
   if(itemsMes.length)out+='<button class="add-btn" style="padding:10px 14px;background:transparent;border:1px solid rgba(255,255,255,.12);color:var(--text2)" onclick="limparMesGP(\''+mk+'\')">Limpar mês</button>';
   out+='<button class="add-btn" style="padding:10px 18px" onclick="abrirModalImportarGP()">+ Importar extrato</button>';
@@ -1808,10 +1840,12 @@ function renderGastosPessoaisSection(){
   out+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:14px">';
   GP_CATS.forEach(function(cat){
     var v=porCat[cat]||0;
-    if(v<=0)return;
-    out+='<div class="dash-card" style="border-color:'+GP_CAT_COLORS[cat]+'33;padding:10px 12px">';
-    out+='<div class="dc-label" style="font-size:10px">'+cat+'</div>';
-    out+='<div class="dc-val" style="font-size:15px;color:'+GP_CAT_COLORS[cat]+'">'+fmtMoney(v)+'</div>';
+    if(v===0)return;
+    var isInc=v<0;
+    var col=isInc?'#10b981':(GP_CAT_COLORS[cat]||'#888');
+    out+='<div class="dash-card" style="border-color:'+col+'33;padding:10px 12px">';
+    out+='<div class="dc-label" style="font-size:10px">'+cat+(isInc?' ↑':'')+'</div>';
+    out+='<div class="dc-val" style="font-size:15px;color:'+col+'">'+fmtMoney(Math.abs(v))+'</div>';
     out+='</div>';
   });
   out+='</div>';
@@ -1826,7 +1860,8 @@ function renderGastosPessoaisSection(){
       out+='<select data-gpid="'+it.id+'" onchange="updGPCat(this.dataset.gpid,this.value)" style="background:'+GP_CAT_COLORS[it.cat]+'1a;color:'+GP_CAT_COLORS[it.cat]+';border:1px solid '+GP_CAT_COLORS[it.cat]+'44;border-radius:6px;font-size:11px;padding:3px 6px">';
       GP_CATS.forEach(function(c){out+='<option value="'+c+'"'+(c===it.cat?' selected':'')+'>'+c+'</option>';});
       out+='</select>';
-      out+='<span style="font-family:var(--mono);font-size:13px;color:var(--red);width:80px;text-align:right">'+fmtMoney(it.valor)+'</span>';
+      var _isInc=(parseFloat(it.valor)||0)<0;
+      out+='<span style="font-family:var(--mono);font-size:13px;color:'+(_isInc?'var(--emerald)':'var(--red)')+';width:80px;text-align:right">'+(_isInc?'+':'')+fmtMoney(Math.abs(parseFloat(it.valor)||0))+'</span>';
       out+='<button class="desp-del" data-gpid2="'+it.id+'" onclick="delGP(this.dataset.gpid2)">&#215;</button>';
       out+='</div>';
     });
@@ -2465,7 +2500,7 @@ function renderRevisaoImportGP(){
       '<select data-idx="'+idx+'" onchange="ajustarCategoriaBuffer(this.dataset.idx,this.value)" style="background:'+color+'1a;color:'+color+';border:1px solid '+color+'44;border-radius:6px;font-size:10px;padding:2px 5px">'+
       GP_CATS.map(function(c){return '<option value="'+c+'"'+(c===it.cat?' selected':'')+'>'+c+'</option>';}).join('')+
       '</select>'+
-      '<span style="font-family:var(--mono);font-size:12px;color:var(--red);width:70px;text-align:right">'+fmtMoney(it.valor)+'</span>'+
+      '<span style="font-family:var(--mono);font-size:12px;color:'+((parseFloat(it.valor)||0)<0?'var(--emerald)':'var(--red)')+';width:70px;text-align:right">'+((parseFloat(it.valor)||0)<0?'+':'')+fmtMoney(Math.abs(parseFloat(it.valor)||0))+'</span>'+
       '</div>';
   }).join('');
 
