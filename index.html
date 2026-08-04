@@ -1625,13 +1625,11 @@ function saveDesp(d){localStorage.setItem(DESP_KEY,JSON.stringify(d));try{sbSave
 //  GASTOS PESSOAIS (PF) — importação de extrato
 // ══════════════════════════════════════════════
 var GP_KEY='tm_gastos_pessoais_v1';
-var GP_CATS=['Combustível','Alimentação','Mercado','Restaurante/Lanche','Bares & Lazer','Entretenimento','Viagem & Hospedagem','Saúde','Assinaturas','Vestuário','Educação','Consórcio/Investimento','Tarifas & Encargos','Transferências','PIX Recebido','A Categorizar'];
+var GP_CATS=['Carro','Alimentação/Entretenimento','Assinaturas','Vestuário','Consórcio','Tarifas & Encargos','PIX Recebido','A Categorizar'];
 var GP_CAT_COLORS={
-  'Combustível':'#f59e0b','Alimentação':'#22c55e','Mercado':'#10b981','Restaurante/Lanche':'#ec4899',
-  'Bares & Lazer':'#a855f7','Entretenimento':'#8b5cf6','Viagem & Hospedagem':'#06b6d4',
-  'Saúde':'#06b6d4','Assinaturas':'#3b82f6','Vestuário':'#f43f5e','Educação':'#0ea5e9',
-  'Consórcio/Investimento':'#14b8a6','Tarifas & Encargos':'#64748b',
-  'Transferências':'#6366f1','PIX Recebido':'#10b981','A Categorizar':'#c0282d'
+  'Carro':'#f59e0b','Alimentação/Entretenimento':'#a855f7','Assinaturas':'#3b82f6',
+  'Vestuário':'#f43f5e','Consórcio':'#14b8a6','Tarifas & Encargos':'#64748b',
+  'PIX Recebido':'#10b981','A Categorizar':'#c0282d'
 };
 
 function loadGP(){
@@ -1650,19 +1648,12 @@ function categorizeGP(desc,regrasAprendidas){
   // 2. Regras padrão por palavra-chave
   if(d.indexOf('PIX RECEBIDO')!==-1)return 'PIX Recebido';
   var rules=[
-    [['POSTO','COMBUSTIVEL','IPIRANGA','SHELL','ATLANTIC','SANVEL','TONIN','PANORAMA','PACIFI','PRUDENTE','AMIGAO','MIMIM','SPREA','TIO ZICO','POSTO Z5','MNM COM','RUSSI DE POSTO','ZAFALON AUTO'],'Combustível'],
-    [['BAR','PUB','HOOKAH','TABACARIA','CHOPP','ARENA','REPLAY','BEER','BOTECO','CONTAINER','NORTH BEACH','PARADISE BEACH','CLOVER','QUINTAL BUTIA','SANTO ANGELO','SHED BAR'],'Bares & Lazer'],
-    [['TICKETMAIS','INGRESSO','SHOW','CINEMA','TEATRO'],'Entretenimento'],
-    [['SUPERMERCADO','MERCADO','SUPERM','KOMPRAO','PANIFICADORA','PADARIA','EMPORIO','ECOVILLE','CASA DE CARNES'],'Mercado'],
-    [['FARMACIA','DROGARIA'],'Saúde'],
-    [['RESTAURANTE','LANCHE','PIZZA','GULA','PAO ','SORVETERIA','KONE','ASFA LANCH','CRAVO','ROTA 66','RODOSNACK','IFOOD','IFOODBR','PARADA CERTA'],'Restaurante/Lanche'],
-    [['ALIMENTACAO','ACAI','BEBIDAS','CONVENIENCIA','PORTO DA FRUTA','ZEROHORA','PRIMATO','ADENILSON','ZAFALON SEDE'],'Alimentação'],
-    [['IOF','JUROS','TARIFA','PACOTE SERV','SEGURO PRESTAMISTA','ANUIDADE','PROTECAO','PERDA OU ROUBO','PEDAGSICOOB','PEDAGOG','DIARIA TAG','AQUISICAO TAG'],'Tarifas & Encargos'],
-    [['TRANSF. PIX','TRANSF.RECEB','VM CONFEC'],'Transferências'],
-    [['NETFLIX','SPOTIFY','APPLE','AMAZON PRIME','GOOGLE','YOUTUBE','LOOVI','JUSBRASIL','JUSB','DL*GOOGLE','ANTHROPIC','UNICEF','TIM*'],'Assinaturas'],
+    [['POSTO','COMBUSTIVEL','IPIRANGA','SHELL','ATLANTIC','SANVEL','TONIN','PANORAMA','PACIFI','PRUDENTE','AMIGAO','MIMIM','SPREA','TIO ZICO','POSTO Z5','MNM COM','RUSSI DE POSTO','ZAFALON AUTO','PEDAGSICOOB','PEDAGOG','DIARIA TAG','AQUISICAO TAG','LOOVI','TAG'],'Carro'],
+    [['BAR','PUB','HOOKAH','TABACARIA','CHOPP','ARENA','REPLAY','BEER','BOTECO','CONTAINER','NORTH BEACH','PARADISE BEACH','CLOVER','QUINTAL BUTIA','SANTO ANGELO','SHED BAR','TICKETMAIS','INGRESSO','SHOW','CINEMA','TEATRO','SUPERMERCADO','MERCADO','SUPERM','KOMPRAO','PANIFICADORA','PADARIA','EMPORIO','ECOVILLE','CASA DE CARNES','RESTAURANTE','LANCHE','PIZZA','ASFA LANCH','CRAVO','ROTA 66','RODOSNACK','IFOOD','IFOODBR','PARADA CERTA','ACAI','BEBIDAS','CONVENIENCIA','PORTO DA FRUTA','ZEROHORA','PRIMATO','ADENILSON','ZAFALON SEDE','FARMACIA','DROGARIA','AIRBNB','HOTEL','POUSADA'],'Alimentação/Entretenimento'],
+    [['NETFLIX','SPOTIFY','APPLE','AMAZON PRIME','GOOGLE','YOUTUBE','JUSBRASIL','JUSB','DL*GOOGLE','ANTHROPIC','UNICEF','TIM*','FACEBOOK'],'Assinaturas'],
     [['NIKE','SHOPEE','NETSHOES','INVICTUS','HERING','MARISA','RENNER','RIACHUELO'],'Vestuário'],
-    [['AIRBNB','HOTEL','POUSADA','HOSTEL'],'Viagem & Hospedagem'],
-    [['CONSOR','ADM CONSOR'],'Consórcio/Investimento']
+    [['CONSOR','ADM CONSOR'],'Consórcio'],
+    [['IOF','JUROS','TARIFA','PACOTE SERV','SEGURO PRESTAMISTA','ANUIDADE','PROTECAO','PERDA OU ROUBO'],'Tarifas & Encargos']
   ];
   for(var i=0;i<rules.length;i++){
     var palavras=rules[i][0],cat=rules[i][1];
